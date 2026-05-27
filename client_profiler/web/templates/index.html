@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Client Profiler Dashboard{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+  <h1>Client Profiles</h1>
+  <p class="lead">Browse clients, profile depth, and recent activity extracted from reports and business documents.</p>
+  {% if clients %}
+  <div class="client-grid">
+    {% for client in clients %}
+    <a class="client-card" href="/client/{{ client.name }}">
+      <h2>{{ client.name }}</h2>
+      <div class="stats">
+        <span>{{ client.report_count }} reports</span>
+        <span>{{ client.summary.profile_nodes }} nodes</span>
+        <span>{{ client.summary.timeline_events }} timeline events</span>
+        <span>{{ client.summary.vector_chunks }} memory chunks</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No clients found yet. Run ingestion from the CLI to populate data.</div>
+  {% endif %}
+</section>
+
+<section class="panel reveal delayed">
+  <div class="section-head">
+    <h2>Recent Timeline Across All Clients</h2>
+    <a class="inline-link" href="/timeline">Open full timeline</a>
+  </div>
+  {% if recent_timeline %}
+  <div class="timeline-list">
+    {% for item in recent_timeline %}
+    <article class="timeline-item">
+      <div class="timeline-meta">
+        <span class="chip">{{ item.client_name }}</span>
+        <span class="chip">{{ item.document_kind }}</span>
+        <span>{{ item.event_date or item.created_at }}</span>
+      </div>
+      <p>{{ item.summary }}</p>
+      <small>
+        <a class="doc-link" href="{{ item.document_href }}" target="_blank" rel="noopener noreferrer">{{ item.document_name }}</a>
+      </small>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No timeline events available.</div>
+  {% endif %}
+</section>
+{% endblock %}

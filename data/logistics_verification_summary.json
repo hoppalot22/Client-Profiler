@@ -1,0 +1,58 @@
+{
+  "generated": 100,
+  "ingested": 100,
+  "mismatch_count": 40,
+  "sample_mismatches": [
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\access_request_ar_2016_01p.docx",
+      "expected": "access_request",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\email_chain_ne_pip_int_ass_2016.md",
+      "expected": "email_chain",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\access_request_ar_2017_02p.html",
+      "expected": "access_request",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\email_chain_bu_ele_rel_aud_2017.html",
+      "expected": "email_chain",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_03_2018_harborstone_manufacturing_mechanical_overhaul_review\\access_request_ar_2018_03p.csv",
+      "expected": "access_request",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_03_2018_harborstone_manufacturing_mechanical_overhaul_review\\email_chain_hm_mec_ove_rev_2018.txt",
+      "expected": "email_chain",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_04_2019_northriver_energy_civil_structural_condition_survey\\access_request_ar_2019_04p.docx",
+      "expected": "access_request",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_04_2019_northriver_energy_civil_structural_condition_survey\\email_chain_ne_civ_str_con_2019.md",
+      "expected": "email_chain",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_05_2020_bluemesa_utilities_piping_integrity_assessment\\access_request_ar_2020_05p.html",
+      "expected": "access_request",
+      "actual": "purchase_order"
+    },
+    {
+      "path": "C:\\Users\\ALEX~1.HOR\\AppData\\Local\\temp\\logistics_verify_im8o3u8a\\sample_docs\\project_logistics\\report_05_2020_bluemesa_utilities_piping_integrity_assessment\\email_chain_bu_pip_int_ass_2020.html",
+      "expected": "email_chain",
+      "actual": "purchase_order"
+    }
+  ],
+  "top_level_project_nodes": 60
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Client Profiler{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}" />
+    <script>
+      (function () {
+        const storedTheme = localStorage.getItem('cp-theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = storedTheme || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <header class="topbar">
+      <a class="brand" href="/">Client Profiler</a>
+      <div class="topbar-sub">
+        Consulting Knowledge Timeline
+        <a class="inline-link" href="/timeline">View Timeline</a>
+        <a class="inline-link" href="/reports">Report Lookup</a>
+        <a class="inline-link" href="/admin/maintenance">Maintenance</a>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode</button>
+      </div>
+    </header>
+    <main class="page">{% block content %}{% endblock %}</main>
+    {% block extra_scripts %}{% endblock %}
+    <script src="{{ url_for('static', path='/theme_toggle.js') }}"></script>
+  </body>
+</html>

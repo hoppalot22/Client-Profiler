@@ -1,0 +1,12 @@
+Purchase Order
+==============
+
+Client: Harborstone Manufacturing
+Project: Piping Integrity Assessment
+Project Code: HM-PIP-INT-ASS-2024
+Purchase Order Number: PO-2024-092
+Date: 2024-09-20
+Quote Reference: Q-2024-09B
+Service Window: 2024-09-20 to 2024-09-23
+Cost Centre: HM-PIP-INT-ASS-2024-OPS
+Description: Approved field services and logistics support for piping integrity assessment at Port Melville Works.

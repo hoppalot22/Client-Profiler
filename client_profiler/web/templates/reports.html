@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Report Lookup - Client Profiler{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+  <h1>Report Lookup</h1>
+  <p class="lead">Find ingested reports by client, date range, document type, and contact.</p>
+
+  <form class="filter-grid" method="get" action="/reports">
+    <label>
+      Client
+      <select name="client">
+        <option value="">All clients</option>
+        {% for c in clients %}
+        <option value="{{ c }}" {% if filters.client == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Document Type
+      <select name="doc_kind">
+        <option value="">All types</option>
+        {% for kind in document_kinds %}
+        <option value="{{ kind }}" {% if filters.doc_kind == kind %}selected{% endif %}>{{ kind }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Contact
+      <select name="contact">
+        <option value="">All contacts</option>
+        {% for c in contacts %}
+        <option value="{{ c }}" {% if filters.contact == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      From Date
+      <input type="date" name="date_from" value="{{ filters.date_from }}" />
+    </label>
+
+    <label>
+      To Date
+      <input type="date" name="date_to" value="{{ filters.date_to }}" />
+    </label>
+
+    <label>
+      Limit
+      <input type="number" min="1" max="2000" name="limit" value="{{ filters.limit }}" />
+    </label>
+
+    <div class="filter-actions">
+      <button type="submit">Apply filters</button>
+      <a class="inline-link" href="/reports">Reset</a>
+    </div>
+  </form>
+</section>
+
+<section class="panel reveal delayed">
+  <div class="section-head">
+    <h2>Reports</h2>
+    <span class="chip">{{ reports | length }} reports</span>
+  </div>
+  {% if reports %}
+  <div class="report-list">
+    {% for report in reports %}
+    <article class="report-item">
+      <div class="section-head">
+        <a class="doc-link" href="{{ report.document_href }}" target="_blank" rel="noopener noreferrer">{{ report.document_name }}</a>
+        <span class="chip">{{ report.document_kind }}</span>
+      </div>
+      <p><a class="inline-link" href="{{ report.versions_href }}">View version timeline</a></p>
+      <div class="timeline-meta">
+        <span>{{ report.client_name or "Unknown client" }}</span>
+        <span>{{ report.report_date or report.ingested_at }}</span>
+      </div>
+      {% if report.report_type %}<p><strong>Report Type:</strong> {{ report.report_type }}</p>{% endif %}
+      {% if report.contacts %}<p><strong>Contacts:</strong> {{ report.contacts | join(', ') }}</p>{% endif %}
+      {% if report.authors %}<p><strong>Authors:</strong> {{ report.authors | join(', ') }}</p>{% endif %}
+
+      {% if report.missing_date %}
+      <form class="inline-date-form" method="post" action="/report/set-date">
+        <input type="hidden" name="path" value="{{ report.source_path }}" />
+        <input type="hidden" name="next_url" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" />
+        <label>
+          Set report date:
+          <input type="date" name="report_date" required />
+        </label>
+        <button type="submit">Save</button>
+      </form>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No reports match the current filters.</div>
+  {% endif %}
+</section>
+{% endblock %}

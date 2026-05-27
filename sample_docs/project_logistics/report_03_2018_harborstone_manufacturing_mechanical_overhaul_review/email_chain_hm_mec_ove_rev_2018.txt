@@ -1,0 +1,10 @@
+RE: Mechanical Overhaul Review mobilisation and access hold points
+==================================================================
+
+Client: Harborstone Manufacturing
+Project: Mechanical Overhaul Review
+Project Code: HM-MEC-OVE-REV-2018
+Date: 2018-03-16
+Quote Number: Q-2018-03A
+Purchase Order Number: PO-2018-031
+Email Chain: From=maintenance.planner@harborstone.example.com | To=coordinator@crestline.example.com | Sent=2018-03-16 07:42 | Subject=RE: Mechanical Overhaul Review mobilisation and access hold points | Body=Please confirm the crew list for Mechanical Overhaul Review, linked to quote Q-2018-03A and PO PO-2018-031. Shutdown gate opens at 05:30 on 2018-03-20.; From=coordinator@crestline.example.com | To=maintenance.planner@harborstone.example.com | Sent=2018-03-16 09:18 | Subject=RE: Mechanical Overhaul Review mobilisation and access hold points | Body=Crew nominated: Rebecca Holt, Nathan Wu, Talia Mercer. All hold current inductions; we still require confined-space approval for the LV room entry and confirmation of escort arrangements.; From=shutdown.supervisor@harborstone.example.com | To=coordinator@crestline.example.com | Sent=2018-03-17 14:05 | Subject=RE: Mechanical Overhaul Review mobilisation and access hold points | Body=Escort approved for day shift only. Night shift access will be released once the permit office has the final SWMS and the elevated work platform registration.

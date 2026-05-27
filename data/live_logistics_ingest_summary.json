@@ -1,0 +1,56 @@
+{
+  "ingested": 100,
+  "mismatch_count": 58,
+  "sample_mismatches": [
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\access_request_ar_2016_01p.docx",
+      "expected": "access_request",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\email_chain_ne_pip_int_ass_2016.md",
+      "expected": "email_chain",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\purchase_order_po_2016_011.xlsx",
+      "expected": "purchase_order",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\quote_q_2016_01a.txt",
+      "expected": "quote",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\quote_variation_q_2016_01a_rev1.md",
+      "expected": "quote",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\access_request_ar_2017_02p.html",
+      "expected": "access_request",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\email_chain_bu_ele_rel_aud_2017.html",
+      "expected": "email_chain",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\purchase_order_po_2017_021.csv",
+      "expected": "purchase_order",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\quote_q_2017_02a.html",
+      "expected": "quote",
+      "actual": null
+    },
+    {
+      "path": "C:\\Users\\alex.horner\\OneDrive - Alinta Servco\\Documents\\Python\\Client Profiler\\sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\quote_variation_q_2017_02a_rev1.html",
+      "expected": "quote",
+      "actual": null
+    }
+  ]
+}

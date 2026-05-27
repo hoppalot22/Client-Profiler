@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Report Version Timeline - {{ document_name }}{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+  <a class="back-link" href="/reports">Back to report lookup</a>
+  <h1>{{ document_name }}</h1>
+  <p class="lead">Version timeline and structured change summary for this report path.</p>
+  <p><a class="doc-link" href="{{ document_href }}" target="_blank" rel="noopener noreferrer">Open current document</a></p>
+  <p class="muted">{{ source_path }}</p>
+</section>
+
+<section class="panel reveal delayed">
+  <h2>Version History</h2>
+  {% if versions %}
+  <div class="report-list">
+    {% for version in versions %}
+    <article class="report-item">
+      <div class="section-head">
+        <strong>{{ version.label }}</strong>
+        <span class="chip">{{ version.report_date or version.ingested_at }}</span>
+      </div>
+      <p class="muted">Hash: {{ version.content_hash }}</p>
+      <details open>
+        <summary>Diff Summary</summary>
+        <ul>
+          {% for line in version.change_summary %}
+          <li>{{ line }}</li>
+          {% endfor %}
+        </ul>
+      </details>
+      <details>
+        <summary>Structured Snapshot</summary>
+        <pre>{{ version.snapshot | tojson(indent=2) }}</pre>
+      </details>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No version history exists yet for this report.</div>
+  {% endif %}
+</section>
+{% endblock %}

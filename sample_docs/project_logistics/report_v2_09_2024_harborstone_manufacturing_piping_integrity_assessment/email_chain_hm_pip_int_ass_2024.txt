@@ -1,0 +1,10 @@
+RE: Piping Integrity Assessment mobilisation and access hold points
+===================================================================
+
+Client: Harborstone Manufacturing
+Project: Piping Integrity Assessment
+Project Code: HM-PIP-INT-ASS-2024
+Date: 2024-09-22
+Quote Number: Q-2024-09B
+Purchase Order Number: PO-2024-092
+Email Chain: From=maintenance.planner@harborstone.example.com | To=coordinator@vector.example.com | Sent=2024-09-22 07:42 | Subject=RE: Piping Integrity Assessment mobilisation and access hold points | Body=Please confirm the crew list for Piping Integrity Assessment, linked to quote Q-2024-09B and PO PO-2024-092. Shutdown gate opens at 05:30 on 2024-09-26.; From=coordinator@vector.example.com | To=maintenance.planner@harborstone.example.com | Sent=2024-09-22 09:18 | Subject=RE: Piping Integrity Assessment mobilisation and access hold points | Body=Crew nominated: Rebecca Holt, Nathan Wu, Talia Mercer. All hold current inductions; we still require confined-space approval for the LV room entry and confirmation of escort arrangements.; From=shutdown.supervisor@harborstone.example.com | To=coordinator@vector.example.com | Sent=2024-09-23 14:05 | Subject=RE: Piping Integrity Assessment mobilisation and access hold points | Body=Escort approved for day shift only. Night shift access will be released once the permit office has the final SWMS and the elevated work platform registration.

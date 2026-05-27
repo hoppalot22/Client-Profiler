@@ -1,0 +1,13 @@
+Budget Estimate for Mechanical Overhaul Review
+==============================================
+
+Client: Northriver Energy
+Project: Mechanical Overhaul Review
+Project Code: NE-MEC-OVE-REV-2022
+Quote Number: Q-2022-07A
+Date: 2022-07-13
+Site: Kestrel Gas Plant
+Supplier: Crestline Site Access
+Linked Report: report_07_2022_northriver_energy_mechanical_overhaul_review.pdf
+Scope: Mobilise specialist crew for mechanical overhaul review including shutdown planning, testing attendance, and reporting close-out.
+Commercial Notes: Pricing includes site induction, temporary access equipment, and after-hours standby coverage.

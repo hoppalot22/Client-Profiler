@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Timeline - Client Profiler{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+  <h1>Timeline Explorer</h1>
+  <p class="lead">Filter timeline events by client, date range, document type, and contacts.</p>
+
+  <form class="filter-grid" method="get" action="/timeline">
+    <label>
+      Client
+      <select name="client">
+        <option value="">All clients</option>
+        {% for c in clients %}
+        <option value="{{ c }}" {% if filters.client == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Document Type
+      <select name="doc_kind">
+        <option value="">All types</option>
+        {% for kind in document_kinds %}
+        <option value="{{ kind }}" {% if filters.doc_kind == kind %}selected{% endif %}>{{ kind }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Contact
+      <select name="contact">
+        <option value="">All contacts</option>
+        {% for c in contacts %}
+        <option value="{{ c }}" {% if filters.contact == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      From Date
+      <input type="date" name="date_from" value="{{ filters.date_from }}" />
+    </label>
+
+    <label>
+      To Date
+      <input type="date" name="date_to" value="{{ filters.date_to }}" />
+    </label>
+
+    <label>
+      Limit
+      <input type="number" min="1" max="2000" name="limit" value="{{ filters.limit }}" />
+    </label>
+
+    <div class="filter-actions">
+      <button type="submit">Apply filters</button>
+      <a class="inline-link" href="/timeline">Reset</a>
+    </div>
+  </form>
+</section>
+
+<section class="panel reveal delayed">
+  <div class="section-head">
+    <h2>Timeline Results</h2>
+    <span class="chip">{{ timeline | length }} events</span>
+  </div>
+  {% if timeline %}
+  <article class="timeline-visual-card" data-timeline-visual>
+    <div class="section-head">
+      <div>
+        <h3>Scaled Project Timeline</h3>
+        <p class="muted">Mouse wheel zooms around the cursor. Event spacing is proportional to elapsed time.</p>
+      </div>
+      <span class="chip" data-scale-readout>1x</span>
+    </div>
+    <div class="timeline-visual-viewport">
+      <div class="timeline-visual-track"></div>
+    </div>
+  </article>
+  <div class="timeline-list">
+    {% for item in timeline %}
+    <article class="timeline-item">
+      <div class="timeline-meta">
+        <span class="chip">{{ item.client_name }}</span>
+        <span class="chip">{{ item.document_kind }}</span>
+        {% if item.project_name %}<span class="chip">{{ item.project_name }}</span>{% endif %}
+        <span>{{ item.display_date }}</span>
+      </div>
+      <p>{{ item.summary }}</p>
+      <small>
+        <a class="doc-link" href="{{ item.document_href }}" target="_blank" rel="noopener noreferrer">{{ item.document_name }}</a>
+      </small>
+      {% if item.missing_date %}
+      <form class="inline-date-form" method="post" action="/report/set-date">
+        <input type="hidden" name="path" value="{{ item.source_document }}" />
+        <input type="hidden" name="next_url" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" />
+        <label>
+          Set report date:
+          <input type="date" name="report_date" required />
+        </label>
+        <button type="submit">Save</button>
+      </form>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No timeline items match your current filters.</div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script id="timeline-visual-data" type="application/json">{{ timeline_visual_items | tojson }}</script>
+<script src="{{ url_for('static', path='/timeline_explorer.js') }}"></script>
+{% endblock %}

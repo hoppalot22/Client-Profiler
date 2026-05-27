@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Maintenance - Client Profiler{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+  <h1>Maintenance Console</h1>
+  <p class="lead">Merge duplicate clients and remove problematic entities without SQL edits.</p>
+  {% if message %}
+  <div class="admin-banner {% if status == 'error' %}is-error{% else %}is-ok{% endif %}">{{ message }}</div>
+  {% endif %}
+</section>
+
+<section class="panel reveal delayed">
+  <div class="section-head">
+    <h2>Merge Clients</h2>
+  </div>
+  <form class="admin-form" method="post" action="/admin/merge-client">
+    <label>
+      Source client
+      <select name="source_client" required>
+        <option value="">Select source</option>
+        {% for client in clients %}
+        <option value="{{ client.name }}">{{ client.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Target client
+      <select name="target_client" required>
+        <option value="">Select target</option>
+        {% for client in clients %}
+        <option value="{{ client.name }}">{{ client.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Merge into target</button>
+  </form>
+</section>
+
+<section class="panel reveal delayed">
+  <div class="section-head">
+    <h2>Suspicious Single-Document Clients</h2>
+    <span class="chip">{{ suspicious_clients | length }} clients</span>
+  </div>
+  <form class="admin-inline" method="post" action="/admin/cleanup-bad-clients">
+    <label><input type="checkbox" name="delete_documents" value="true" /> Also delete document rows</label>
+    <button type="submit">Cleanup suspicious clients</button>
+  </form>
+  {% if suspicious_clients %}
+  <div class="report-list">
+    {% for item in suspicious_clients %}
+    <article class="report-item">
+      <strong>{{ item.client_name }}</strong>
+      <p class="muted">{{ item.document_name }}</p>
+      <form class="admin-inline" method="post" action="/admin/delete-client">
+        <input type="hidden" name="client_name" value="{{ item.client_name }}" />
+        <label><input type="checkbox" name="delete_documents" value="true" /> delete docs</label>
+        <button type="submit">Delete client</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No suspicious clients currently detected.</div>
+  {% endif %}
+</section>
+
+<section class="panel reveal delayed">
+  <h2>Delete Profile Node</h2>
+  <form class="admin-form" method="post" action="/admin/delete-node">
+    <label>
+      Client
+      <select name="client_name" required>
+        <option value="">Select client</option>
+        {% for client in clients %}
+        <option value="{{ client.name }}">{{ client.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Node path
+      <input type="text" name="node_path" placeholder="Projects/Project A/Workscope" required />
+    </label>
+    <button type="submit">Delete node</button>
+  </form>
+</section>
+
+<section class="panel reveal delayed">
+  <h2>Delete Report Record</h2>
+  <form class="admin-form" method="post" action="/admin/delete-report">
+    <label>
+      Source report path
+      <input type="text" name="path" placeholder="sample_docs/report_xx..." required />
+    </label>
+    <button type="submit">Delete report</button>
+  </form>
+
+  <div class="report-list">
+    {% for report in recent_reports[:20] %}
+    <article class="report-item">
+      <a class="doc-link" href="{{ report.document_href }}" target="_blank" rel="noopener noreferrer">{{ report.document_name }}</a>
+      <p class="muted">{{ report.client_name or 'No client' }} · {{ report.document_kind }}</p>
+      <form class="admin-inline" method="post" action="/admin/delete-report">
+        <input type="hidden" name="path" value="{{ report.source_path }}" />
+        <button type="submit">Delete this report</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel reveal delayed">
+  <h2>Client Snapshot</h2>
+  <div class="client-grid">
+    {% for client in clients %}
+    <article class="client-card admin-card">
+      <h3>{{ client.name }}</h3>
+      <div class="stats">
+        <span>{{ client.document_count }} documents</span>
+        <span>{{ client.summary.profile_nodes }} nodes</span>
+        <span>{{ client.summary.timeline_events }} timeline events</span>
+      </div>
+      <form class="admin-inline" method="post" action="/admin/delete-client">
+        <input type="hidden" name="client_name" value="{{ client.name }}" />
+        <label><input type="checkbox" name="delete_documents" value="true" /> delete docs</label>
+        <button type="submit">Delete client</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

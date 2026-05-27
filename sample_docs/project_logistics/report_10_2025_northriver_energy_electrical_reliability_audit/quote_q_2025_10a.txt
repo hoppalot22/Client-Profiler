@@ -1,0 +1,13 @@
+Budget Estimate for Electrical Reliability Audit
+================================================
+
+Client: Northriver Energy
+Project: Electrical Reliability Audit
+Project Code: NE-ELE-REL-AUD-2025
+Quote Number: Q-2025-10A
+Date: 2025-10-16
+Site: Kestrel Gas Plant
+Supplier: Axis Shutdown Support
+Linked Report: report_10_2025_northriver_energy_electrical_reliability_audit.pdf
+Scope: Mobilise specialist crew for electrical reliability audit including shutdown planning, testing attendance, and reporting close-out.
+Commercial Notes: Pricing includes site induction, temporary access equipment, and after-hours standby coverage.

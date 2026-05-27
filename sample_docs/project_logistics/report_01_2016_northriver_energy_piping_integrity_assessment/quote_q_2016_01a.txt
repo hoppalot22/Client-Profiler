@@ -1,0 +1,13 @@
+Budget Estimate for Piping Integrity Assessment
+===============================================
+
+Client: Northriver Energy
+Project: Piping Integrity Assessment
+Project Code: NE-PIP-INT-ASS-2016
+Quote Number: Q-2016-01A
+Date: 2016-01-07
+Site: Kestrel Gas Plant
+Supplier: Vector Field Services
+Linked Report: report_01_2016_northriver_energy_piping_integrity_assessment.pdf
+Scope: Mobilise specialist crew for piping integrity assessment including shutdown planning, testing attendance, and reporting close-out.
+Commercial Notes: Pricing includes site induction, temporary access equipment, and after-hours standby coverage.

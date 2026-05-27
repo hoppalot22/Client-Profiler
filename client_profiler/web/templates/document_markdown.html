@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document_title }} - Document View{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+  <a class="back-link" href="/timeline">Back to timeline</a>
+  <h1>{{ document_title }}</h1>
+  <p class="lead">Rendered markdown view for non-browser-native document type.</p>
+  <p><strong>Source:</strong> {{ document_path }}</p>
+</section>
+
+<section class="panel reveal delayed markdown-view">
+  {{ rendered_markdown | safe }}
+</section>
+{% endblock %}

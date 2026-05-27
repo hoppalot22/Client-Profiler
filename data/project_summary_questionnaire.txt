@@ -1,0 +1,9 @@
+# Project summary questionnaire
+# Edit these lines to change what the AI extracts.
+# Format: key|question
+scope|What is this project about and what is the work scope?
+participants|Who are the key people or teams involved?
+timeline|What dates, milestones, or sequencing are relevant?
+commercial|What budget, quote, PO, invoice, or logistics status is evidenced?
+risks_actions|What key findings, issues, risks, and recommended actions are evidenced?
+missing_info|What important information is missing or uncertain?

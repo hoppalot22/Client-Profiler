@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}{{ client_name }} - Client Profile{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+  <a class="back-link" href="/">Back to dashboard</a>
+  <a class="inline-link" href="/timeline?client={{ client_name | urlencode }}">Open full timeline for {{ client_name }}</a>
+  <h1>{{ client_name }}</h1>
+  <div class="stats-row">
+    <span class="chip">{{ summary.profile_nodes }} profile nodes</span>
+    <span class="chip">{{ summary.timeline_events }} timeline events</span>
+    <span class="chip">{{ summary.vector_chunks }} memory chunks</span>
+  </div>
+</section>
+
+<section class="client-layout">
+  <div class="client-column client-column-primary">
+    <details class="panel reveal delayed collapsible-card" open>
+      <summary>
+        <span>Ingested Reports</span>
+        <span class="chip">{{ client_reports|length }}</span>
+      </summary>
+      <div class="collapsible-card-body">
+        {% if client_reports %}
+        <div class="report-list">
+          {% for report in client_reports %}
+          <article class="report-item">
+            <a class="doc-link" href="{{ report.document_href }}" target="_blank" rel="noopener noreferrer">{{ report.document_name }}</a>
+            <a class="inline-link" href="{{ report.versions_href }}">Version timeline</a>
+            <div class="timeline-meta">
+              <span class="chip">{{ report.document_kind }}</span>
+              <span>{{ report.report_date or report.ingested_at }}</span>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty">No reports associated with this client yet.</div>
+        {% endif %}
+      </div>
+    </details>
+
+    <details class="panel reveal delayed collapsible-card" open>
+      <summary>
+        <span>Non-Report Documents</span>
+        <span class="chip">{{ client_non_reports|length }}</span>
+      </summary>
+      <div class="collapsible-card-body">
+        {% if client_non_reports %}
+        <div class="report-list">
+          {% for document in client_non_reports %}
+          <article class="report-item">
+            <a class="doc-link" href="{{ document.document_href }}" target="_blank" rel="noopener noreferrer">{{ document.document_name }}</a>
+            <div class="timeline-meta">
+              <span class="chip">{{ document.document_kind }}</span>
+              <span>{{ document.report_date or document.ingested_at }}</span>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty">No non-report documents associated with this client yet.</div>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+
+  <div class="client-column client-column-secondary">
+    <article class="panel reveal delayed">
+      <div class="section-head">
+        <h2>Projects</h2>
+        <span class="chip">{{ projects | length }} projects</span>
+      </div>
+      {% if projects %}
+      <div class="project-list">
+        {% for project in projects %}
+        <details class="project-node" open data-project-key="{{ project.project_key }}">
+          <summary>
+            <span>{{ project.project_name }}</span>
+            <span class="project-node-meta">
+              {% if project.project_code %}<span class="chip">{{ project.project_code }}</span>{% endif %}
+              <span class="chip">{{ project.document_count }} docs</span>
+            </span>
+          </summary>
+
+          <div class="project-summary">
+            <div class="project-summary-header">
+              <strong>Executive Summary</strong>
+              <div class="project-summary-header-controls">
+                {% if llm_available %}
+                <span class="ai-generating-badge" hidden>Generating AI summary&hellip;</span>
+                {% endif %}
+                <button
+                  class="btn-generate-summary"
+                  data-client="{{ client_name | e }}"
+                  data-project-key="{{ project.project_key | e }}"
+                  {% if llm_available and project.needs_ai_summary %}data-auto-summarise="true"{% endif %}
+                  title="Generate an AI summary using RAG over all stored document embeddings"
+                >{% if project.has_ai_summary %}Regenerate AI Summary{% else %}Generate AI Summary{% endif %}</button>
+              </div>
+            </div>
+            <p class="project-summary-text">{{ project.summary }}</p>
+            <div class="project-summary-status" aria-live="polite"></div>
+            <div class="timeline-meta">
+              {% if project.has_ai_summary and project.ai_summary_updated_at %}
+              <span class="chip ai-summary-updated-chip" data-updated-at="{{ project.ai_summary_updated_at | e }}">AI summary updated: {{ project.ai_summary_updated_at }}</span>
+              {% endif %}
+              {% if project.latest_date %}<span>Latest activity: {{ project.latest_date }}</span>{% endif %}
+              {% if project.references %}<span>Refs: {{ project.references[:4] | join(', ') }}</span>{% endif %}
+            </div>
+          </div>
+
+          <details class="project-doc-group" open>
+            <summary>
+              <span>Reports</span>
+              <span class="chip">{{ project.report_count }}</span>
+            </summary>
+            {% if project.reports %}
+            <div class="report-list">
+              {% for report in project.reports %}
+              <article class="report-item">
+                <a class="doc-link" href="{{ report.document_href }}" target="_blank" rel="noopener noreferrer">{{ report.document_name }}</a>
+                <div class="timeline-meta">
+                  <span class="chip">{{ report.document_kind }}</span>
+                  <span>{{ report.report_date or report.ingested_at }}</span>
+                </div>
+                {% if report.title and report.title != report.document_name %}<p>{{ report.title }}</p>{% endif %}
+              </article>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty">No reports grouped under this project.</div>
+            {% endif %}
+          </details>
+
+          <details class="project-doc-group" open>
+            <summary>
+              <span>Non-Report Documents</span>
+              <span class="chip">{{ project.non_report_count }}</span>
+            </summary>
+            {% if project.non_reports %}
+            <div class="report-list">
+              {% for document in project.non_reports %}
+              <article class="report-item">
+                <a class="doc-link" href="{{ document.document_href }}" target="_blank" rel="noopener noreferrer">{{ document.document_name }}</a>
+                <div class="timeline-meta">
+                  <span class="chip">{{ document.document_kind }}</span>
+                  <span>{{ document.report_date or document.ingested_at }}</span>
+                </div>
+                {% if document.title and document.title != document.document_name %}<p>{{ document.title }}</p>{% endif %}
+              </article>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty">No non-report documents grouped under this project.</div>
+            {% endif %}
+          </details>
+        </details>
+        {% endfor %}
+      </div>
+      {% else %}
+        <div class="empty">No projects could be inferred for this client yet.</div>
+      {% endif %}
+    </article>
+
+    <article class="panel reveal delayed-more">
+      <h2>Timeline</h2>
+      {% if timeline %}
+      <div class="timeline-list">
+        {% for item in timeline %}
+        <article class="timeline-item">
+          <div class="timeline-meta">
+            <span class="chip">{{ item.document_kind }}</span>
+            <span>{{ item.display_date }}</span>
+          </div>
+          <p>{{ item.summary }}</p>
+          <small>
+            <a class="doc-link" href="{{ item.document_href }}" target="_blank" rel="noopener noreferrer">{{ item.document_name }}</a>
+          </small>
+          {% if item.missing_date %}
+          <form class="inline-date-form" method="post" action="/report/set-date">
+            <input type="hidden" name="path" value="{{ item.source_document }}" />
+            <input type="hidden" name="next_url" value="{{ request.url.path }}" />
+            <label>
+              Set report date:
+              <input type="date" name="report_date" required />
+            </label>
+            <button type="submit">Save</button>
+          </form>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+        <div class="empty">No timeline entries available.</div>
+      {% endif %}
+    </article>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  function formatUpdatedAt(value) {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (isNaN(dt.getTime())) return value;
+    return dt.toLocaleString();
+  }
+
+  document.querySelectorAll('.ai-summary-updated-chip').forEach(function (chip) {
+    const raw = chip.dataset.updatedAt || '';
+    chip.textContent = 'AI summary updated: ' + formatUpdatedAt(raw);
+  });
+
+  // Shared logic for a single generate-summary call.
+  // Returns a Promise that resolves when the request finishes (success or fail).
+  function runSummarise(btn) {
+    return new Promise(function (resolve) {
+      const clientName = btn.dataset.client;
+      const projectKey = btn.dataset.projectKey;
+      const card = btn.closest('.project-node');
+      const summaryEl = card ? card.querySelector('.project-summary-text') : null;
+      const statusEl  = card ? card.querySelector('.project-summary-status') : null;
+      const badge     = card ? card.querySelector('.ai-generating-badge') : null;
+      const metaEl    = card ? card.querySelector('.timeline-meta') : null;
+
+      btn.disabled = true;
+      btn.textContent = 'Generating\u2026';
+      if (badge)  badge.hidden = false;
+      if (card)   card.classList.add('generating');
+      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'project-summary-status'; }
+
+      const url = '/api/client/' + encodeURIComponent(clientName)
+                + '/project/' + encodeURIComponent(projectKey)
+                + '/summarise';
+
+      fetch(url, { method: 'POST' })
+        .then(function (resp) { return resp.json().then(function (data) { return { ok: resp.ok, data: data }; }); })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.data.detail || 'Server error');
+          if (summaryEl) summaryEl.textContent = res.data.summary;
+          if (metaEl) {
+            let chip = metaEl.querySelector('.ai-summary-updated-chip');
+            const raw = res.data.updated_at || new Date().toISOString();
+            if (!chip) {
+              chip = document.createElement('span');
+              chip.className = 'chip ai-summary-updated-chip';
+              metaEl.prepend(chip);
+            }
+            chip.dataset.updatedAt = raw;
+            chip.textContent = 'AI summary updated: ' + formatUpdatedAt(raw);
+          }
+          if (statusEl) {
+            statusEl.textContent = '\u2713 AI summary generated';
+            statusEl.className = 'project-summary-status summary-ok';
+          }
+        })
+        .catch(function (err) {
+          if (statusEl) {
+            statusEl.textContent = 'Could not generate: ' + err.message;
+            statusEl.className = 'project-summary-status summary-error';
+          }
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = 'Regenerate AI Summary';
+          if (badge)  badge.hidden = true;
+          if (card)   card.classList.remove('generating');
+          resolve();
+        });
+    });
+  }
+
+  // Manual button clicks
+  document.querySelectorAll('.btn-generate-summary').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      runSummarise(btn);
+    });
+  });
+
+  // Auto-generate on page load — sequentially so the LLM isn't hammered
+  var autoBtns = Array.from(document.querySelectorAll('.btn-generate-summary[data-auto-summarise]'));
+  if (autoBtns.length > 0) {
+    autoBtns.reduce(function (chain, btn) {
+      return chain.then(function () { return runSummarise(btn); });
+    }, Promise.resolve());
+  }
+})();
+</script>
+{% endblock %}
+

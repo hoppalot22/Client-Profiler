@@ -1,0 +1,12 @@
+Purchase Order
+==============
+
+Client: Harborstone Manufacturing
+Project: Electrical Reliability Audit
+Project Code: HM-ELE-REL-AUD-2021
+Purchase Order Number: PO-2021-061
+Date: 2021-06-17
+Quote Reference: Q-2021-06A
+Service Window: 2021-06-17 to 2021-06-20
+Cost Centre: HM-ELE-REL-AUD-2021-OPS
+Description: Approved field services and logistics support for electrical reliability audit at Port Melville Works.

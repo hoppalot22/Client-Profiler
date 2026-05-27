@@ -1,0 +1,10 @@
+RE: Electrical Reliability Audit mobilisation and access hold points
+====================================================================
+
+Client: Harborstone Manufacturing
+Project: Electrical Reliability Audit
+Project Code: HM-ELE-REL-AUD-2021
+Date: 2021-06-19
+Quote Number: Q-2021-06B
+Purchase Order Number: PO-2021-062
+Email Chain: From=maintenance.planner@harborstone.example.com | To=coordinator@axis.example.com | Sent=2021-06-19 07:42 | Subject=RE: Electrical Reliability Audit mobilisation and access hold points | Body=Please confirm the crew list for Electrical Reliability Audit, linked to quote Q-2021-06B and PO PO-2021-062. Shutdown gate opens at 05:30 on 2021-06-23.; From=coordinator@axis.example.com | To=maintenance.planner@harborstone.example.com | Sent=2021-06-19 09:18 | Subject=RE: Electrical Reliability Audit mobilisation and access hold points | Body=Crew nominated: Alyssa Tran, Jordan Pike, Marco Singh. All hold current inductions; we still require confined-space approval for the LV room entry and confirmation of escort arrangements.; From=shutdown.supervisor@harborstone.example.com | To=coordinator@axis.example.com | Sent=2021-06-20 14:05 | Subject=RE: Electrical Reliability Audit mobilisation and access hold points | Body=Escort approved for day shift only. Night shift access will be released once the permit office has the final SWMS and the elevated work platform registration.
