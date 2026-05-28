@@ -1,0 +1,11 @@
+# Project key fields
+# Format: key|Label|Prompt for extraction
+title|Title| What is the name of the project?
+scope|Project Scope|What kind of work is being done?
+participants|Participants|Who are the people and parties involved?
+date|Date|When was the report submitted?
+quoted|Quoted Price|What price was quoted for the project?
+invoice|Invoice Amount|How much was invoiced for the project?
+findings|Findings|What key findings, issues, or risks are documented?
+recommendations|Recommendations|What actions or recommendations are documented?
+gaps|Known Gaps|What important information is missing or uncertain?

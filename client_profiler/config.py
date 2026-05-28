@@ -12,6 +12,9 @@ class ProfilerConfig:
     ollama_timeout_seconds: int = 60
     embedding_model: str = "all-MiniLM-L6-v2"
     project_summary_questionnaire_path: Path = Path("./data/project_summary_questionnaire.txt")
+    project_key_fields_path: Path = Path("./data/project_key_fields.txt")
+    project_field_debug_enabled: bool = True
+    project_field_debug_log_path: Path = Path("./data/project_field_debug.jsonl")
     max_text_chars_for_llm: int = 12000
     default_chunk_size: int = 1200
     default_chunk_overlap: int = 150

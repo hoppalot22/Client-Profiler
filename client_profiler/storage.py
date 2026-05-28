@@ -126,6 +126,20 @@ class SqliteStorage:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS project_key_fields (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_name TEXT NOT NULL,
+                    project_key TEXT NOT NULL,
+                    project_name TEXT,
+                    fields_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(client_name, project_key)
+                )
+                """
+            )
 
     def _path_candidates(self, source_path: str) -> tuple[str, str]:
         normalized = str(source_path).strip()
@@ -289,28 +303,69 @@ class SqliteStorage:
                 ),
             )
 
-    def fetch_vectors(self, client_name: str | None = None) -> list[dict[str, Any]]:
+    def fetch_vectors(
+        self,
+        client_name: str | None = None,
+        source_documents: list[str] | None = None,
+        metadata_filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         query = "SELECT client_name, source_document, chunk_text, embedding_json, metadata_json FROM vectors"
-        params: tuple[Any, ...] = ()
+        where_clauses: list[str] = []
+        params: list[Any] = []
+
         if client_name:
-            query += " WHERE client_name = ?"
-            params = (client_name,)
+            where_clauses.append("client_name = ?")
+            params.append(client_name)
+
+        if source_documents:
+            normalized = [str(p).strip() for p in source_documents if str(p).strip()]
+            if normalized:
+                placeholders = ",".join(["?"] * len(normalized))
+                where_clauses.append(f"source_document IN ({placeholders})")
+                params.extend(normalized)
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
 
         with self._connect() as conn:
-            rows = conn.execute(query, params).fetchall()
+            rows = conn.execute(query, tuple(params)).fetchall()
 
         result = []
         for row in rows:
+            metadata = json.loads(row[4])
+            if metadata_filters and not self._metadata_matches(metadata, metadata_filters):
+                continue
             result.append(
                 {
                     "client_name": row[0],
                     "source_document": row[1],
                     "chunk_text": row[2],
                     "embedding": json.loads(row[3]),
-                    "metadata": json.loads(row[4]),
+                    "metadata": metadata,
                 }
             )
         return result
+
+    def _metadata_matches(self, metadata: dict[str, Any], filters: dict[str, Any]) -> bool:
+        for key, wanted in (filters or {}).items():
+            actual = metadata.get(key)
+            if isinstance(wanted, (list, tuple, set)):
+                wanted_values = {str(v).strip().lower() for v in wanted if str(v).strip()}
+                if not wanted_values:
+                    continue
+                if isinstance(actual, list):
+                    actual_values = {str(v).strip().lower() for v in actual if str(v).strip()}
+                    if not (actual_values & wanted_values):
+                        return False
+                else:
+                    if str(actual or "").strip().lower() not in wanted_values:
+                        return False
+                continue
+
+            if str(actual or "").strip().lower() != str(wanted or "").strip().lower():
+                return False
+
+        return True
 
     def list_clients(self) -> list[str]:
         with self._connect() as conn:
@@ -618,6 +673,83 @@ class SqliteStorage:
                 }
             )
         return result
+
+    def get_project_key_fields(self, client_name: str, project_key: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT project_name, fields_json, created_at, updated_at
+                FROM project_key_fields
+                WHERE client_name = ? AND project_key = ?
+                LIMIT 1
+                """,
+                (client_name, project_key),
+            ).fetchone()
+
+        if row is None:
+            return None
+        try:
+            fields = json.loads(row[1]) if row[1] else {}
+        except json.JSONDecodeError:
+            fields = {}
+        return {
+            "project_name": row[0],
+            "fields": fields if isinstance(fields, dict) else {},
+            "created_at": row[2],
+            "updated_at": row[3],
+        }
+
+    def upsert_project_key_field(
+        self,
+        client_name: str,
+        project_key: str,
+        project_name: str,
+        field_key: str,
+        value: str,
+        status: str,
+        evidence: str = "",
+    ) -> dict[str, Any]:
+        existing = self.get_project_key_fields(client_name, project_key) or {"fields": {}}
+        fields = dict(existing.get("fields") or {})
+        timestamp = datetime.utcnow().isoformat()
+        fields[str(field_key)] = {
+            "value": str(value or "").strip(),
+            "status": str(status or "").strip(),
+            "evidence": str(evidence or "").strip(),
+            "updated_at": timestamp,
+        }
+
+        created_at = str(existing.get("created_at") or timestamp)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO project_key_fields (
+                    client_name, project_key, project_name, fields_json, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(client_name, project_key)
+                DO UPDATE SET
+                    project_name = excluded.project_name,
+                    fields_json = excluded.fields_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    client_name,
+                    project_key,
+                    project_name,
+                    json.dumps(fields, ensure_ascii=True),
+                    created_at,
+                    timestamp,
+                ),
+            )
+
+        return {
+            "field_key": field_key,
+            "value": fields[str(field_key)]["value"],
+            "status": fields[str(field_key)]["status"],
+            "evidence": fields[str(field_key)]["evidence"],
+            "updated_at": timestamp,
+        }
 
     def get_latest_document_record(self, source_path: str) -> dict[str, Any] | None:
         with self._connect() as conn:

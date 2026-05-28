@@ -19,6 +19,7 @@ from client_profiler.embeddings import LocalEmbedder, VectorRetriever
 from client_profiler.extraction import OllamaClient
 from client_profiler.ingestion import DocumentReader
 from client_profiler.projects.project_associator import ProjectAssociator
+from client_profiler.projects.project_field_service import ProjectFieldService
 from client_profiler.projects.project_summary_service import ProjectSummaryService
 
 from client_profiler.config import ProfilerConfig
@@ -76,6 +77,15 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         llm=llm,
         questionnaire_path=config.project_summary_questionnaire_path,
     )
+    field_service = ProjectFieldService(
+        storage=storage,
+        embedder=embedder,
+        retriever=retriever,
+        llm=llm,
+        key_fields_path=config.project_key_fields_path,
+        debug_enabled=config.project_field_debug_enabled,
+        debug_log_path=config.project_field_debug_log_path,
+    )
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
@@ -116,6 +126,7 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             reader,
             project_associator,
             storage,
+            field_service,
             llm_available=llm is not None,
         )
 
@@ -129,6 +140,7 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             "client_reports": client_reports,
             "client_non_reports": client_non_reports,
             "projects": projects,
+            "project_field_definitions": field_service.field_definitions(),
             "llm_available": llm is not None,
         }
         return templates.TemplateResponse(request=request, name="client.html", context=context)
@@ -333,6 +345,7 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             reader,
             project_associator,
             storage,
+            field_service,
             llm_available=llm is not None,
         )
         project = next((p for p in projects if p["project_key"] == project_key), None)
@@ -354,6 +367,57 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             )
 
         return {"summary": generated["summary"], "updated_at": generated.get("updated_at")}
+
+    @app.post("/api/client/{client_name}/project/{project_key}/field/{field_key}/generate")
+    def project_generate_field(client_name: str, project_key: str, field_key: str) -> dict:
+        if llm is None:
+            raise HTTPException(status_code=503, detail="LLM provider is not configured.")
+
+        definitions = {row["key"]: row for row in field_service.field_definitions()}
+        field_def = definitions.get(field_key)
+        if field_def is None:
+            raise HTTPException(status_code=404, detail=f"Unknown field: {field_key}")
+
+        all_docs = _enrich_client_documents(storage.list_client_documents(client_name))
+        projects = _build_client_projects(
+            client_name,
+            all_docs,
+            reader,
+            project_associator,
+            storage,
+            field_service,
+            llm_available=llm is not None,
+        )
+        project = next((p for p in projects if p["project_key"] == project_key), None)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found.")
+
+        existing = {
+            row["key"]: {
+                "value": row.get("value") or "",
+                "status": row.get("status") or "",
+            }
+            for row in project.get("key_fields", [])
+        }
+        result = field_service.generate_field(
+            client_name=client_name,
+            project_key=project_key,
+            project_name=project["project_name"],
+            field_key=field_key,
+            field_prompt=field_def["prompt"],
+            documents=project["documents"],
+            existing_fields=existing,
+        )
+        if not result.get("ok"):
+            reason = str(result.get("error_message") or "Unknown error.")
+            code = str(result.get("error_code") or "unknown_error")
+            raise HTTPException(status_code=500, detail=f"Field generation failed ({code}): {reason}")
+        return {
+            "field_key": field_key,
+            "value": result.get("value") or "",
+            "status": result.get("status") or "",
+            "updated_at": result.get("updated_at") or "",
+        }
 
     @app.get("/document", response_model=None)
     def view_document(path: str, request: Request) -> Any:
@@ -606,6 +670,7 @@ def _build_client_projects(
     reader: DocumentReader,
     project_associator: ProjectAssociator,
     storage: SqliteStorage,
+    field_service: ProjectFieldService,
     llm_available: bool,
 ) -> list[dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
@@ -690,6 +755,25 @@ def _build_client_projects(
         group["document_count"] = len(group["documents"])
         group["report_count"] = len(group["reports"])
         group["non_report_count"] = len(group["non_reports"])
+
+        definitions = field_service.field_definitions()
+        persisted = field_service.project_field_values(client_name, group["project_key"])
+        key_fields: list[dict[str, Any]] = []
+        for definition in definitions:
+            row = persisted.get(definition["key"], {}) if isinstance(persisted, dict) else {}
+            value = str((row if isinstance(row, dict) else {}).get("value") or "").strip()
+            status = str((row if isinstance(row, dict) else {}).get("status") or "").strip()
+            key_fields.append(
+                {
+                    "key": definition["key"],
+                    "label": definition["label"],
+                    "value": value,
+                    "status": status,
+                    "needs_generation": bool(llm_available and not value and status != "absent"),
+                }
+            )
+        group["key_fields"] = key_fields
+
         group.pop("token_hints", None)
         result.append(group)
 

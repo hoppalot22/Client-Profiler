@@ -1,0 +1,59 @@
+{
+  "model": "qwen2.5:0.5b",
+  "timeout_seconds": 60,
+  "questionnaire_path": "data\\project_summary_questionnaire.txt",
+  "projects_tested": 3,
+  "rows": [
+    {
+      "client_name": "BlueMesa Utilities",
+      "project_key": "civil-structural-condition-survey",
+      "project_name": "Civil Structural Condition Survey",
+      "non_batched": {
+        "ok": true,
+        "error_code": null,
+        "summary_len": 122,
+        "quality_score": 0.1761
+      },
+      "batched": {
+        "ok": true,
+        "error_code": null,
+        "summary_len": 315,
+        "quality_score": 0.2181
+      }
+    },
+    {
+      "client_name": "BlueMesa Utilities",
+      "project_key": "piping-integrity-assessment",
+      "project_name": "Piping Integrity Assessment",
+      "non_batched": {
+        "ok": true,
+        "error_code": null,
+        "summary_len": 383,
+        "quality_score": 0.2652
+      },
+      "batched": {
+        "ok": true,
+        "error_code": null,
+        "summary_len": 233,
+        "quality_score": 0.1613
+      }
+    },
+    {
+      "client_name": "Harborstone Manufacturing",
+      "project_key": "hm-pip-int-ass-2024",
+      "project_name": "Piping Integrity Assessment",
+      "non_batched": {
+        "ok": false,
+        "error_code": "summary_too_short",
+        "summary_len": 0,
+        "quality_score": 0.0
+      },
+      "batched": {
+        "ok": false,
+        "error_code": "request_timed_out",
+        "summary_len": 0,
+        "quality_score": 0.0
+      }
+    }
+  ]
+}

@@ -101,7 +101,12 @@ def main() -> None:
     if args.command == "query":
         query_embedding = profiler.embedder.embed_text(args.text)
         retriever = VectorRetriever(profiler.storage)
-        hits = retriever.search(query_embedding, top_k=args.top_k, client_name=args.client)
+        hits = retriever.search(
+            query_embedding,
+            top_k=args.top_k,
+            client_name=args.client,
+            query_text=args.text,
+        )
         print(json.dumps(hits, indent=2))
         return
 

@@ -75,7 +75,7 @@
       {% if projects %}
       <div class="project-list">
         {% for project in projects %}
-        <details class="project-node" open data-project-key="{{ project.project_key }}">
+        <details class="project-node" open data-project-key="{{ project.project_key }}" data-client-name="{{ client_name | e }}">
           <summary>
             <span>{{ project.project_name }}</span>
             <span class="project-node-meta">
@@ -108,6 +108,23 @@
               {% endif %}
               {% if project.latest_date %}<span>Latest activity: {{ project.latest_date }}</span>{% endif %}
               {% if project.references %}<span>Refs: {{ project.references[:4] | join(', ') }}</span>{% endif %}
+            </div>
+
+            <div class="project-key-fields">
+              <strong>Key Fields</strong>
+              <div class="project-key-field-list">
+                {% for field in project.key_fields %}
+                <div
+                  class="project-key-field-row"
+                  data-field-key="{{ field.key | e }}"
+                  data-needs-generation="{{ 'true' if field.needs_generation else 'false' }}"
+                >
+                  <span class="project-key-field-label">{{ field.label }}</span>
+                  <span class="project-key-field-value">{{ field.value }}</span>
+                  <span class="project-key-field-tag" hidden>Generating...</span>
+                </div>
+                {% endfor %}
+              </div>
             </div>
           </div>
 
@@ -274,6 +291,42 @@
     });
   }
 
+  function runFieldGeneration(card, row) {
+    return new Promise(function (resolve) {
+      const clientName = card.dataset.clientName;
+      const projectKey = card.dataset.projectKey;
+      const fieldKey = row.dataset.fieldKey;
+      const valueEl = row.querySelector('.project-key-field-value');
+      const tagEl = row.querySelector('.project-key-field-tag');
+
+      row.classList.add('generating');
+      if (tagEl) tagEl.hidden = false;
+
+      const url = '/api/client/' + encodeURIComponent(clientName)
+                + '/project/' + encodeURIComponent(projectKey)
+                + '/field/' + encodeURIComponent(fieldKey)
+                + '/generate';
+
+      fetch(url, { method: 'POST' })
+        .then(function (resp) { return resp.json().then(function (data) { return { ok: resp.ok, data: data }; }); })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.data.detail || 'Server error');
+          if (valueEl) valueEl.textContent = res.data.value || '';
+          row.dataset.needsGeneration = 'false';
+          row.classList.remove('field-error');
+        })
+        .catch(function (err) {
+          row.classList.add('field-error');
+          row.title = err.message;
+        })
+        .finally(function () {
+          row.classList.remove('generating');
+          if (tagEl) tagEl.hidden = true;
+          resolve();
+        });
+    });
+  }
+
   // Manual button clicks
   document.querySelectorAll('.btn-generate-summary').forEach(function (btn) {
     btn.addEventListener('click', function (e) {
@@ -282,11 +335,16 @@
     });
   });
 
-  // Auto-generate on page load — sequentially so the LLM isn't hammered
-  var autoBtns = Array.from(document.querySelectorAll('.btn-generate-summary[data-auto-summarise]'));
-  if (autoBtns.length > 0) {
-    autoBtns.reduce(function (chain, btn) {
-      return chain.then(function () { return runSummarise(btn); });
+  // Auto-fill missing key fields on page load, one field at a time.
+  var fieldQueue = [];
+  document.querySelectorAll('.project-node').forEach(function (card) {
+    card.querySelectorAll('.project-key-field-row[data-needs-generation="true"]').forEach(function (row) {
+      fieldQueue.push({ card: card, row: row });
+    });
+  });
+  if (fieldQueue.length > 0) {
+    fieldQueue.reduce(function (chain, item) {
+      return chain.then(function () { return runFieldGeneration(item.card, item.row); });
     }, Promise.resolve());
   }
 })();

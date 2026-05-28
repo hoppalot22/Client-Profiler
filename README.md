@@ -81,6 +81,9 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
 - Run automated smoke test:
   - `python scripts/smoke_test.py`
 
+- Evaluate retrieval quality on the labeled benchmark set:
+  - `python scripts/evaluate_retrieval_quality.py --top-k 8 --show-failures`
+
 - Generate mixed-format logistics fixtures for all current sample reports:
   - `python scripts/generate_project_logistics_docs.py`
   - Generate and ingest into the active database:

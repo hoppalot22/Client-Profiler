@@ -1,0 +1,35 @@
+[
+  {"id":"e01","query":"BlueMesa Utilities electrical reliability audit 2017 report date","client_name":"BlueMesa Utilities","expected_sources":["report_02_2017_bluemesa_utilities_electrical_reliability_audit.docx"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e02","query":"BlueMesa Utilities piping integrity assessment 2020","client_name":"BlueMesa Utilities","expected_sources":["report_05_2020_bluemesa_utilities_piping_integrity_assessment.docx"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e03","query":"BlueMesa civil structural condition survey 2023","client_name":"BlueMesa Utilities","expected_sources":["report_08_2023_bluemesa_utilities_civil_structural_condition_survey.html"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e04","query":"NorthRiver Energy piping integrity assessment 2016 findings","client_name":"NorthRiver Energy","expected_sources":["report_01_2016_northriver_energy_piping_integrity_assessment.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e05","query":"NorthRiver civil structural condition survey 2019","client_name":"NorthRiver Energy","expected_sources":["report_04_2019_northriver_energy_civil_structural_condition_survey.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e06","query":"NorthRiver mechanical overhaul review 2022","client_name":"NorthRiver Energy","expected_sources":["report_07_2022_northriver_energy_mechanical_overhaul_review.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e07","query":"NorthRiver electrical reliability audit 2025","client_name":"NorthRiver Energy","expected_sources":["report_10_2025_northriver_energy_electrical_reliability_audit.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e08","query":"Harborstone Manufacturing mechanical overhaul review 2018","client_name":"Harborstone Manufacturing","expected_sources":["report_03_2018_harborstone_manufacturing_mechanical_overhaul_review.html"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e09","query":"Harborstone electrical reliability audit 2021","client_name":"Harborstone Manufacturing","expected_sources":["report_06_2021_harborstone_manufacturing_electrical_reliability_audit.html"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e10","query":"Harborstone piping integrity assessment 2024","client_name":"Harborstone Manufacturing","expected_sources":["report_09_2024_harborstone_manufacturing_piping_integrity_assessment.docx"],"metadata_filters":{"document_kind":["report"]}},
+
+  {"id":"e11","query":"BlueMesa Utilities electrical audit revised version","client_name":"BlueMesa Utilities","expected_sources":["report_v2_02_2017_bluemesa_utilities_electrical_reliability_audit.docx"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e12","query":"BlueMesa Utilities piping integrity revised version","client_name":"BlueMesa Utilities","expected_sources":["report_v2_05_2020_bluemesa_utilities_piping_integrity_assessment.docx"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e13","query":"BlueMesa Utilities structural survey revised version","client_name":"BlueMesa Utilities","expected_sources":["report_v2_08_2023_bluemesa_utilities_civil_structural_condition_survey.html"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e14","query":"NorthRiver Energy piping integrity revised version","client_name":"NorthRiver Energy","expected_sources":["report_v2_01_2016_northriver_energy_piping_integrity_assessment.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e15","query":"NorthRiver Energy structural survey revised version","client_name":"NorthRiver Energy","expected_sources":["report_v2_04_2019_northriver_energy_civil_structural_condition_survey.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e16","query":"NorthRiver Energy mechanical overhaul revised version","client_name":"NorthRiver Energy","expected_sources":["report_v2_07_2022_northriver_energy_mechanical_overhaul_review.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e17","query":"NorthRiver Energy electrical audit revised version","client_name":"NorthRiver Energy","expected_sources":["report_v2_10_2025_northriver_energy_electrical_reliability_audit.pdf"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e18","query":"Harborstone mechanical overhaul revised version","client_name":"Harborstone Manufacturing","expected_sources":["report_v2_03_2018_harborstone_manufacturing_mechanical_overhaul_review.html"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e19","query":"Harborstone electrical audit revised version","client_name":"Harborstone Manufacturing","expected_sources":["report_v2_06_2021_harborstone_manufacturing_electrical_reliability_audit.html"],"metadata_filters":{"document_kind":["report"]}},
+  {"id":"e20","query":"Harborstone piping integrity revised version","client_name":"Harborstone Manufacturing","expected_sources":["report_v2_09_2024_harborstone_manufacturing_piping_integrity_assessment.docx"],"metadata_filters":{"document_kind":["report"]}},
+
+  {"id":"e21","query":"BlueMesa report about electrical reliability","client_name":"BlueMesa Utilities","expected_sources":["report_02_2017_bluemesa_utilities_electrical_reliability_audit.docx","report_v2_02_2017_bluemesa_utilities_electrical_reliability_audit.docx"]},
+  {"id":"e22","query":"BlueMesa civil structural condition survey report","client_name":"BlueMesa Utilities","expected_sources":["report_08_2023_bluemesa_utilities_civil_structural_condition_survey.html","report_v2_08_2023_bluemesa_utilities_civil_structural_condition_survey.html"]},
+  {"id":"e23","query":"NorthRiver report about mechanical overhaul","client_name":"NorthRiver Energy","expected_sources":["report_07_2022_northriver_energy_mechanical_overhaul_review.pdf","report_v2_07_2022_northriver_energy_mechanical_overhaul_review.pdf"]},
+  {"id":"e24","query":"NorthRiver report about electrical reliability","client_name":"NorthRiver Energy","expected_sources":["report_10_2025_northriver_energy_electrical_reliability_audit.pdf","report_v2_10_2025_northriver_energy_electrical_reliability_audit.pdf"]},
+  {"id":"e25","query":"Harborstone report about piping integrity","client_name":"Harborstone Manufacturing","expected_sources":["report_09_2024_harborstone_manufacturing_piping_integrity_assessment.docx","report_v2_09_2024_harborstone_manufacturing_piping_integrity_assessment.docx"]},
+
+  {"id":"e26","query":"invoice details and billed amount","expected_sources":["invoice.txt"]},
+  {"id":"e27","query":"deduplication test markdown notes","expected_sources":["dedup_test.md"]},
+  {"id":"e28","query":"inspection report notes","expected_sources":["inspection_report.md"]},
+  {"id":"e29","query":"viewer test document","expected_sources":["viewer_test.docx"]},
+  {"id":"e30","query":"north river electrical reliability access request 2025","expected_sources":["access_request_ar_2025_10p.docx"]}
+]

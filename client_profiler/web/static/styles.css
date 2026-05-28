@@ -663,6 +663,55 @@ pre {
   color: var(--ink);
 }
 
+.project-key-fields {
+  margin-top: 12px;
+}
+
+.project-key-field-list {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.project-key-field-row {
+  display: grid;
+  grid-template-columns: 160px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(16, 42, 67, 0.12);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.project-key-field-label {
+  font-weight: 700;
+  color: var(--ink-dim);
+}
+
+.project-key-field-value {
+  min-height: 1em;
+}
+
+.project-key-field-tag {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 122, 140, 0.35);
+  background: rgba(31, 122, 140, 0.12);
+  color: var(--accent, #1f7a8c);
+}
+
+.project-key-field-row.generating {
+  border-color: rgba(31, 122, 140, 0.55);
+  box-shadow: 0 0 0 2px rgba(31, 122, 140, 0.22);
+}
+
+.project-key-field-row.field-error {
+  border-color: #c75b5b;
+  background: rgba(199, 91, 91, 0.08);
+}
+
 .project-list {
   display: grid;
   gap: 14px;

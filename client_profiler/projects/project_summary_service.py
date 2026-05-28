@@ -11,6 +11,7 @@ from client_profiler.storage import SqliteStorage
 
 
 ABSENT_ANSWER = "Information not present in stored documents."
+SUMMARY_RAG_CONTEXT_BUDGET = 2200
 
 
 class ProjectSummaryService:
@@ -67,7 +68,36 @@ class ProjectSummaryService:
 
         query_text = self._build_query_text(project_name, documents)
         query_embedding = self.embedder.embed_text(query_text)
-        rag_hits = self.retriever.search(query_embedding, top_k=18, client_name=None)
+        source_documents = [str(doc.get("source_path") or "").strip() for doc in documents if str(doc.get("source_path") or "").strip()]
+        rag_hits = self.retriever.search(
+            query_embedding,
+            top_k=12,
+            client_name=client_name,
+            source_documents=source_documents or None,
+            query_text=query_text,
+            hybrid_alpha=0.8,
+            use_mmr=True,
+            mmr_lambda=0.75,
+            candidate_pool=90,
+        )
+        if len(rag_hits) < 8:
+            extra_hits = self.retriever.search(
+                query_embedding,
+                top_k=18,
+                client_name=client_name,
+                query_text=query_text,
+                hybrid_alpha=0.8,
+                use_mmr=True,
+                mmr_lambda=0.75,
+                candidate_pool=120,
+            )
+            seen_sources = {str(hit.get("source_document") or "") for hit in rag_hits}
+            for hit in extra_hits:
+                src = str(hit.get("source_document") or "")
+                if src in seen_sources:
+                    continue
+                rag_hits.append(hit)
+                seen_sources.add(src)
 
         rag_context = self._build_rag_context(rag_hits)
         digest = self._build_project_digest(documents)
@@ -155,6 +185,7 @@ class ProjectSummaryService:
     def _build_rag_context(self, rag_hits: list[dict[str, Any]]) -> str:
         seen_sources: set[str] = set()
         lines: list[str] = []
+        used = 0
         for hit in rag_hits:
             source = str(hit.get("source_document") or "")
             if not source or source in seen_sources:
@@ -162,7 +193,13 @@ class ProjectSummaryService:
             seen_sources.add(source)
             label = f"[{hit.get('client_name') or 'unknown client'} | {Path(source).name}]"
             snippet = str(hit.get("chunk_text") or "")[:420]
-            lines.append(f"{label}\n{snippet}")
+            candidate = f"{label}\n{snippet}"
+            if lines and (used + len(candidate)) > SUMMARY_RAG_CONTEXT_BUDGET:
+                break
+            lines.append(candidate)
+            used += len(candidate)
+            if used >= SUMMARY_RAG_CONTEXT_BUDGET:
+                break
             if len(lines) >= 12:
                 break
         return "\n\n".join(lines)

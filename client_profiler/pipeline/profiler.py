@@ -134,7 +134,7 @@ class ClientProfiler:
             project_name = extracted.additional_fields.get("project_name")
             self.profile_builder.apply(str(path), extracted)
 
-        for chunk in _chunk_text(doc.text, self.config.default_chunk_size, self.config.default_chunk_overlap):
+        for idx, chunk in enumerate(_chunk_text(doc.text, self.config.default_chunk_size, self.config.default_chunk_overlap)):
             embedding = self.embedder.embed_text(chunk)
             self.storage.add_vector(
                 source_document=str(path),
@@ -145,6 +145,13 @@ class ClientProfiler:
                     "is_client_related": classification.is_client_related,
                     "source_type": doc.source_type,
                     "report_date": report_date,
+                    "title": _guess_title(doc.text, path),
+                    "report_type": extracted.insight.report_type,
+                    "project_key": extracted.additional_fields.get("project_key"),
+                    "project_name": extracted.additional_fields.get("project_name"),
+                    "project_code": extracted.additional_fields.get("project_code"),
+                    "related_references": extracted.additional_fields.get("related_references", []),
+                    "chunk_index": idx,
                 },
                 client_name=extracted.client_name,
             )
@@ -279,17 +286,64 @@ class ClientProfiler:
         return text
 
 def _chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
-    cleaned = " ".join(text.split())
-    if not cleaned:
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    paragraphs = [re.sub(r"\s+", " ", block).strip() for block in re.split(r"\n\s*\n+", normalized)]
+    paragraphs = [p for p in paragraphs if p]
+    if not paragraphs:
         return []
 
-    chunks = []
-    start = 0
-    step = max(1, chunk_size - overlap)
-    while start < len(cleaned):
-        chunk = cleaned[start : start + chunk_size]
-        chunks.append(chunk)
-        start += step
+    units: list[str] = []
+    for para in paragraphs:
+        if len(para) <= chunk_size:
+            units.append(para)
+            continue
+
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", para) if s.strip()]
+        if not sentences:
+            sentences = [para]
+
+        current = ""
+        for sentence in sentences:
+            if not current:
+                current = sentence
+                continue
+            candidate = f"{current} {sentence}".strip()
+            if len(candidate) <= chunk_size:
+                current = candidate
+                continue
+            units.append(current)
+            current = sentence
+        if current:
+            units.append(current)
+
+    chunks: list[str] = []
+    current = ""
+    overlap = max(0, int(overlap))
+    for unit in units:
+        candidate = unit if not current else f"{current}\n{unit}"
+        if len(candidate) <= chunk_size:
+            current = candidate
+            continue
+
+        if current:
+            chunks.append(current.strip())
+            tail = current[-overlap:].strip() if overlap else ""
+            current = f"{tail} {unit}".strip() if tail else unit
+            if len(current) <= chunk_size:
+                continue
+
+        # Fallback for rare very long units.
+        start = 0
+        step = max(1, chunk_size - overlap)
+        while start < len(unit):
+            piece = unit[start : start + chunk_size].strip()
+            if piece:
+                chunks.append(piece)
+            start += step
+        current = ""
+
+    if current:
+        chunks.append(current.strip())
     return chunks
 
 
