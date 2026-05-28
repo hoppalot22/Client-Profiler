@@ -15,6 +15,7 @@
     </script>
   </head>
   <body>
+    {% set llm = llm_status() %}
     <div class="bg-orb orb-a"></div>
     <div class="bg-orb orb-b"></div>
     <header class="topbar">
@@ -24,6 +25,17 @@
         <a class="inline-link" href="/timeline">View Timeline</a>
         <a class="inline-link" href="/reports">Report Lookup</a>
         <a class="inline-link" href="/admin/maintenance">Maintenance</a>
+        <span
+          class="llm-badge{% if llm.fallback_active %} is-fallback{% endif %}"
+          title="Provider: {{ llm.provider }} | URL: {{ llm.base_url }} | Configured: {{ llm.configured_model }}"
+        >
+          {% if llm.enabled %}
+            LLM {{ llm.active_model or llm.configured_model }}
+            {% if llm.fallback_active %}(fallback from {{ llm.configured_model }}){% endif %}
+          {% else %}
+            LLM disabled
+          {% endif %}
+        </span>
         <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode</button>
       </div>
     </header>

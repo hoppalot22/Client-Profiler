@@ -1,11 +1,11 @@
 # Project key fields
 # Format: key|Label|Prompt for extraction
-title|Title| What is the name of the project?
-scope|Project Scope|What kind of work is being done?
-participants|Participants|Who are the people and parties involved?
-date|Date|When was the report submitted?
-quoted|Quoted Price|What price was quoted for the project?
-invoice|Invoice Amount|How much was invoiced for the project?
-findings|Findings|What key findings, issues, or risks are documented?
-recommendations|Recommendations|What actions or recommendations are documented?
-gaps|Known Gaps|What important information is missing or uncertain?
+title|Title|Extract the explicit project/report title from report headers or title pages; do not return a client name, quote number, or invoice number as the title.
+scope|Project Scope|Summarize the technical scope of work (inspection/audit/assessment/repair/upgrade) using concrete wording from report content, not commercial paperwork.
+participants|Participants|List named people, teams, or organisations directly involved; prefer roles and names from report sections over email signatures.
+date|Date|Extract all key project dates (milestones, report issue/submission dates, inspections, approvals) as concise labeled entries. Use YYYY-MM-DD when possible and format as `label: date`; separate multiple entries with `; `.
+quoted|Quoted Price|Extract the quoted/estimated project amount only (with currency if present); if no explicit quote/estimate amount is stated, leave absent.
+invoice|Invoice Amount|Extract the invoiced/billed amount only (with currency if present); do not return quoted or budget values unless explicitly marked as invoiced.
+findings|Findings|Extract the most important technical findings/issues/risks observed in the report (condition defects, compliance gaps, hazards); avoid returning prices, invoice totals, or scheduling-only statements.
+recommendations|Recommendations|Extract recommended actions from the report (typically imperative statements like should/repair/replace/monitor/mitigate/follow-up). Exclude purely commercial statements (quotes, invoices, pricing, PO status) unless they include a clear technical action.
+gaps|Known Gaps|State what key information is missing, uncertain, or not evidenced in the project documents (data gaps, unresolved checks, unknown statuses).

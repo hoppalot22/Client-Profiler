@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 from mimetypes import guess_type
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,9 @@ PROJECT_TOKEN_STOPWORDS = {
 }
 
 
+logger = logging.getLogger(__name__)
+
+
 def create_app(config: ProfilerConfig | None = None) -> FastAPI:
     config = config or ProfilerConfig()
     config.ensure_dirs()
@@ -60,6 +64,21 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
 
     base_dir = Path(__file__).parent
     templates = Jinja2Templates(directory=str(base_dir / "templates"))
+
+    def _llm_status() -> dict[str, Any]:
+        active_model = str(getattr(llm, "model", "") or "") if llm is not None else ""
+        configured_model = str(config.llm_model or "")
+        return {
+            "enabled": llm is not None,
+            "provider": str(config.llm_provider or ""),
+            "base_url": str(config.ollama_base_url or ""),
+            "configured_model": configured_model,
+            "active_model": active_model,
+            "fallback_active": bool(active_model and configured_model and active_model != configured_model),
+        }
+
+    templates.env.globals["llm_status"] = _llm_status
+
     app.mount("/static", StaticFiles(directory=str(base_dir / "static")), name="static")
     reader = DocumentReader()
     llm = (
@@ -85,6 +104,13 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         key_fields_path=config.project_key_fields_path,
         debug_enabled=config.project_field_debug_enabled,
         debug_log_path=config.project_field_debug_log_path,
+    )
+    logger.info(
+        "Client Profiler web app initialized (db=%s, llm_provider=%s, llm_model=%s, embedding_model=%s)",
+        config.db_path,
+        config.llm_provider,
+        config.llm_model,
+        config.embedding_model,
     )
 
     @app.get("/", response_class=HTMLResponse)
@@ -338,6 +364,8 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         if llm is None:
             raise HTTPException(status_code=503, detail="LLM provider is not configured.")
 
+        logger.info("[runtime] project summary generation started (client=%s, project_key=%s)", client_name, project_key)
+
         all_docs = _enrich_client_documents(storage.list_client_documents(client_name))
         projects = _build_client_projects(
             client_name,
@@ -361,17 +389,79 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         if not generated.get("ok"):
             reason = str(generated.get("error_message") or "Unknown error.")
             code = str(generated.get("error_code") or "unknown_error")
+            recoverable_codes = {
+                "llm_not_configured",
+                "request_error",
+                "request_timed_out",
+            }
+            if code.startswith("http_error_") or code in recoverable_codes:
+                fallback_summary = project_associator.summarize_project(
+                    client_name,
+                    project["project_name"],
+                    project["documents"],
+                    skip_llm=True,
+                )
+                storage.upsert_project_summary(
+                    client_name=client_name,
+                    project_key=project_key,
+                    project_name=project["project_name"],
+                    summary_text=fallback_summary,
+                    summary_method=f"rule_fallback_{code}",
+                    questionnaire_answers={"fallback_reason": reason},
+                )
+                summary_service.refresh_summary_embedding(
+                    client_name=client_name,
+                    project_key=project_key,
+                    project_name=project["project_name"],
+                    summary_text=fallback_summary,
+                    summary_method=f"rule_fallback_{code}",
+                    questionnaire_answers={"fallback_reason": reason},
+                )
+                stored = storage.get_project_summary(client_name, project_key) or {}
+                logger.warning(
+                    "[runtime] project summary LLM unavailable; returned fallback summary "
+                    "(client=%s, project_key=%s, code=%s)",
+                    client_name,
+                    project_key,
+                    code,
+                )
+                return {
+                    "summary": fallback_summary,
+                    "updated_at": stored.get("updated_at"),
+                    "method": "rule_fallback",
+                    "fallback_reason": reason,
+                }
+            logger.warning(
+                "[runtime] project summary generation failed (client=%s, project_key=%s, code=%s, reason=%s)",
+                client_name,
+                project_key,
+                code,
+                reason,
+            )
             raise HTTPException(
                 status_code=500,
                 detail=f"AI summary generation failed ({code}): {reason}",
             )
 
-        return {"summary": generated["summary"], "updated_at": generated.get("updated_at")}
+        logger.info("[runtime] project summary generation completed (client=%s, project_key=%s)", client_name, project_key)
+
+        return {
+            "summary": generated["summary"],
+            "updated_at": generated.get("updated_at"),
+            "method": "ai",
+        }
 
     @app.post("/api/client/{client_name}/project/{project_key}/field/{field_key}/generate")
     def project_generate_field(client_name: str, project_key: str, field_key: str) -> dict:
         if llm is None:
             raise HTTPException(status_code=503, detail="LLM provider is not configured.")
+
+        logger.info(
+            "[runtime] project field generation started (client=%s, project_key=%s, field=%s)",
+            client_name,
+            project_key,
+            field_key,
+        )
 
         definitions = {row["key"]: row for row in field_service.field_definitions()}
         field_def = definitions.get(field_key)
@@ -411,12 +501,29 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         if not result.get("ok"):
             reason = str(result.get("error_message") or "Unknown error.")
             code = str(result.get("error_code") or "unknown_error")
-            raise HTTPException(status_code=500, detail=f"Field generation failed ({code}): {reason}")
+            logger.warning(
+                "[runtime] project field generation failed (client=%s, project_key=%s, field=%s, code=%s, reason=%s)",
+                client_name,
+                project_key,
+                field_key,
+                code,
+                reason,
+            )
+            raise HTTPException(status_code=502, detail=f"AI generation failed ({code}): {reason}")
+        logger.info(
+            "[runtime] project field generation completed (client=%s, project_key=%s, field=%s, status=%s)",
+            client_name,
+            project_key,
+            field_key,
+            result.get("status") or "",
+        )
         return {
             "field_key": field_key,
             "value": result.get("value") or "",
             "status": result.get("status") or "",
             "updated_at": result.get("updated_at") or "",
+            "method": result.get("method") or "ai",
+            "error_message": "",
         }
 
     @app.get("/document", response_model=None)
@@ -506,7 +613,7 @@ def _is_browser_friendly(path: Path) -> bool:
     return path.suffix.lower() in {".pdf", ".txt", ".md", ".markdown", ".html", ".htm", ".csv"}
 
 
-def _parse_date(value: str) -> datetime.date | None:
+def _parse_date(value: str | None) -> date | None:
     if not value:
         return None
     value = value.strip()
@@ -679,10 +786,11 @@ def _build_client_projects(
         doc = _decorate_project_document(document, reader)
         project_key = str(doc.get("project_key") or "").strip()
         if project_key:
-            matched_key = _match_existing_project_group(doc, groups)
-            if matched_key and matched_key != project_key and project_key not in groups:
-                groups[project_key] = groups.pop(matched_key)
-                groups[project_key]["project_key"] = project_key
+            # Respect explicit project keys from ingestion/reconciliation metadata.
+            # Fuzzy group matching is only for documents that do not have a key.
+            # Otherwise, similarly worded projects for the same client can collapse
+            # into a single node (e.g., multiple NorthRiver projects).
+            doc["project_key"] = project_key
         else:
             project_key = _match_existing_project_group(doc, groups) or _derive_project_key(doc)
             doc["project_key"] = project_key
@@ -739,12 +847,17 @@ def _build_client_projects(
         group["non_reports"] = _sort_project_documents(group["non_reports"])
         group["documents"] = _sort_project_documents(group["documents"])
         ai_summary = storage.get_project_summary(client_name, group["project_key"])
-        has_ai_summary = bool(ai_summary and str(ai_summary.get("summary_text") or "").strip())
+        summary_text = str((ai_summary or {}).get("summary_text") or "").strip() if isinstance(ai_summary, dict) else ""
+        summary_method = str((ai_summary or {}).get("summary_method") or "").strip() if isinstance(ai_summary, dict) else ""
+        has_persisted_summary = bool(summary_text)
+        has_ai_summary = bool(has_persisted_summary and summary_method.startswith("ai_"))
         group["has_ai_summary"] = has_ai_summary
-        group["needs_ai_summary"] = bool(llm_available and not has_ai_summary)
+        group["summary_method"] = summary_method
+        group["summary_source"] = "AI" if has_ai_summary else ("Fallback" if has_persisted_summary else "Rule")
+        group["needs_ai_summary"] = bool(llm_available and not has_ai_summary and not has_persisted_summary)
         group["ai_summary_updated_at"] = str(ai_summary.get("updated_at") or "") if ai_summary else ""
-        if has_ai_summary:
-            group["summary"] = str(ai_summary.get("summary_text") or "").strip()
+        if has_persisted_summary:
+            group["summary"] = summary_text
         else:
             group["summary"] = group["stored_summary"] or project_associator.summarize_project(
                 client_name,
@@ -763,12 +876,27 @@ def _build_client_projects(
             row = persisted.get(definition["key"], {}) if isinstance(persisted, dict) else {}
             value = str((row if isinstance(row, dict) else {}).get("value") or "").strip()
             status = str((row if isinstance(row, dict) else {}).get("status") or "").strip()
+            evidence = str((row if isinstance(row, dict) else {}).get("evidence") or "").strip()
+            method = str((row if isinstance(row, dict) else {}).get("method") or "").strip().lower()
+            error_message = str((row if isinstance(row, dict) else {}).get("error_message") or "").strip()
+            if not method and evidence.lower().startswith("fallback due to llm"):
+                method = "fallback"
+            if not method and status:
+                method = "ai"
+            if not error_message and method == "fallback" and evidence:
+                fallback_prefix = "Fallback due to LLM unavailability:"
+                if evidence.startswith(fallback_prefix):
+                    error_message = evidence[len(fallback_prefix) :].strip() or "AI generation unavailable."
+                elif evidence.lower().startswith("fallback due to llm"):
+                    error_message = evidence
             key_fields.append(
                 {
                     "key": definition["key"],
                     "label": definition["label"],
                     "value": value,
                     "status": status,
+                    "method": method,
+                    "error_message": error_message,
                     "needs_generation": bool(llm_available and not value and status != "absent"),
                 }
             )
@@ -784,7 +912,7 @@ def _build_client_projects(
     )
 
 
-def _decorate_project_document(document: list[dict[str, Any]] | dict[str, Any], reader: DocumentReader) -> dict[str, Any]:
+def _decorate_project_document(document: dict[str, Any], reader: DocumentReader) -> dict[str, Any]:
     row = dict(document)
     metadata = row.get("metadata", {})
     if not isinstance(metadata, dict):
@@ -810,6 +938,8 @@ def _decorate_project_document(document: list[dict[str, Any]] | dict[str, Any], 
         "project_code": str(metadata.get("project_code") or "").strip(),
         "project_summary": str(metadata.get("project_summary") or "").strip(),
         "report_type": str(metadata.get("report_type") or "").strip(),
+        "key_findings": _normalize_text_list(metadata.get("key_findings", [])),
+        "recommendations": _normalize_text_list(metadata.get("recommendations", [])),
         "authors": _normalize_text_list(metadata.get("authors", [])),
         "contacts": _normalize_text_list(metadata.get("contacts", [])),
         "related_references": _collect_document_references(metadata),
@@ -1020,7 +1150,38 @@ def _read_document_excerpt(reader: DocumentReader, path: Path | None, limit: int
     except Exception:
         return ""
     text = re.sub(r"\s+", " ", document.text).strip()
-    return text[:limit]
+    if not text:
+        return ""
+
+    # Keep an opening slice for identity/context, then pull targeted windows
+    # around downstream sections where findings/recommendations often appear.
+    opening = text[:limit]
+    windows: list[str] = []
+    seen_starts: set[int] = set()
+    for pattern in [
+        r"\bfindings?\b",
+        r"\brecommendations?\b",
+        r"\bactions?\b",
+        r"\bconclusions?\b",
+        r"\bissues?\b",
+        r"\brisks?\b",
+    ]:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        start = max(0, match.start() - 120)
+        if start in seen_starts:
+            continue
+        seen_starts.add(start)
+        end = min(len(text), start + 1100)
+        windows.append(text[start:end].strip())
+
+    if not windows:
+        return opening
+
+    merged_parts = [opening, *windows]
+    merged = "\n".join(part for part in merged_parts if part)
+    return merged[: max(limit * 3, limit)]
 
 
 def _extract_currency_amounts(text: str) -> list[str]:

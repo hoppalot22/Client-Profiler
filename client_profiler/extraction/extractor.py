@@ -21,19 +21,23 @@ class ProfileExtractor:
         self.config = config
 
     def extract(self, text: str, classification: DocumentClassification) -> ExtractedProfileData:
-        truncated = text[: self.config.max_text_chars_for_llm]
+        llm_text = text[: self.config.max_text_chars_for_llm]
+        regex_text = text[: self.config.max_text_chars_for_regex]
 
         if self.llm:
-            llm_data = self._extract_with_llm(truncated, classification)
+            llm_data = self._extract_with_llm(llm_text, classification)
             if llm_data:
                 return self._from_dict(llm_data, classification)
 
-        return self._extract_with_regex(truncated, classification)
+        return self._extract_with_regex(regex_text, classification)
 
     def _extract_with_llm(self, text: str, classification: DocumentClassification) -> dict[str, Any]:
+        llm = self.llm
+        if llm is None:
+            return {}
         prompt = self._build_prompt(text, classification)
         try:
-            return self.llm.extract_structured(prompt)
+            return llm.extract_structured(prompt)
         except Exception:
             return {}
 

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -147,12 +148,21 @@ class ProjectSummaryService:
 
         updated_at = None
         if store:
+            summary_method = f"ai_rag_questionnaire_{strategy}_v1"
             self.storage.upsert_project_summary(
                 client_name=client_name,
                 project_key=project_key,
                 project_name=project_name,
                 summary_text=summary,
-                summary_method=f"ai_rag_questionnaire_{strategy}_v1",
+                summary_method=summary_method,
+                questionnaire_answers=answers,
+            )
+            self.refresh_summary_embedding(
+                client_name=client_name,
+                project_key=project_key,
+                project_name=project_name,
+                summary_text=summary,
+                summary_method=summary_method,
                 questionnaire_answers=answers,
             )
             stored = self.storage.get_project_summary(client_name, project_key) or {}
@@ -447,10 +457,14 @@ class ProjectSummaryService:
 
         prompt = (
             'Return STRICT JSON only with this schema: {"summary":"..."}. '
-            "Write 5-7 concise sentences. Use the Q&A answers as the primary structure, "
+            "Write 8-11 concise sentences. Use the Q&A answers as the primary structure, "
             "and only add details that are supported by evidence. "
             "Do not infer missing facts. If a section has no evidence, acknowledge missing data instead of guessing. "
-            "Include scope, participants, timeline, commercial status, findings, and recommendations.\n\n"
+            "The summary MUST touch each project key-field area with a little context: "
+            "title/theme, scope, participants, date/timeline, quoted/commercial, invoice/commercial status, "
+            "findings, recommendations, and gaps/unknowns. "
+            "Prefer explicit phrasing labels such as 'Scope:', 'Participants:', 'Timeline:', 'Commercial:', "
+            "'Findings:', 'Recommendations:', and 'Gaps:' so each area is visibly covered.\n\n"
             f"Client: {client_name}; Project: {project_name}\n"
             f"Questionnaire answers: {answers}\n\n"
             f"Project digest: {digest}\n\n"
@@ -478,11 +492,12 @@ class ProjectSummaryService:
             }
 
         clean = summary.strip()
-        if len(clean) < 100:
+        clean = self._ensure_key_field_coverage(clean, project_name, answers)
+        if len(clean) < 60:
             return {
                 "ok": False,
                 "error_code": "summary_too_short",
-                "error_message": f"Generated summary was too short ({len(clean)} chars).",
+                "error_message": f"Generated summary was too short ({len(clean)} chars) even after enrichment.",
                 "raw_response": result,
                 "summary_length": len(clean),
                 "attempts": meta.get("attempts", 1),
@@ -494,6 +509,117 @@ class ProjectSummaryService:
             "raw_response": result,
             "attempts": meta.get("attempts", 1),
         }
+
+    def _ensure_key_field_coverage(self, summary: str, project_name: str, answers: dict[str, str]) -> str:
+        text = str(summary or "").strip()
+        if not text:
+            text = "Project summary unavailable."
+        text = self._normalize_section_breaks(text)
+
+        def answer(key: str) -> str:
+            value = str((answers or {}).get(key) or "").strip()
+            if not value or self._looks_absent(value):
+                return ABSENT_ANSWER
+            return value
+
+        sections: list[tuple[str, str]] = [
+            ("Title", project_name or "Untitled project"),
+            ("Scope", answer("scope")),
+            ("Participants", answer("participants")),
+            ("Timeline", answer("timeline")),
+            ("Quoted / Commercial", answer("commercial")),
+            ("Invoice status", answer("commercial")),
+            ("Findings", answer("risks_actions")),
+            ("Recommendations", answer("risks_actions")),
+            ("Gaps", answer("missing_info")),
+        ]
+
+        missing_parts: list[str] = []
+        lowered = text.lower()
+        for label, value in sections:
+            token = f"{label.lower()}:"
+            if token in lowered:
+                continue
+            compact = " ".join(str(value).split())
+            if len(compact) > 180:
+                compact = compact[:177].rstrip() + "..."
+            missing_parts.append(f"{label}: {compact}")
+
+        if not missing_parts:
+            return self._normalize_section_breaks(text)
+        return self._normalize_section_breaks(text + "\n\n" + "\n".join(missing_parts))
+
+    def _normalize_section_breaks(self, summary_text: str) -> str:
+        text = " ".join(str(summary_text or "").split())
+        labels = [
+            "Title",
+            "Scope",
+            "Participants",
+            "Timeline",
+            "Quoted / Commercial",
+            "Invoice status",
+            "Findings",
+            "Recommendations",
+            "Gaps",
+            "Commercial",
+        ]
+        for label in labels:
+            pattern = re.escape(label) + r":"
+            text = re.sub(r"\s*" + pattern, f"\n{label}: ", text, flags=re.IGNORECASE)
+        text = re.sub(r"\n{2,}", "\n", text)
+        return text.strip()
+
+    def refresh_summary_embedding(
+        self,
+        client_name: str,
+        project_key: str,
+        project_name: str,
+        summary_text: str,
+        summary_method: str,
+        questionnaire_answers: dict[str, Any] | None = None,
+    ) -> None:
+        summary = self._normalize_section_breaks(str(summary_text or "").strip())
+        if not summary:
+            return
+
+        answers = questionnaire_answers or {}
+        answer_lines = []
+        if isinstance(answers, dict):
+            for key in sorted(answers.keys()):
+                value = str(answers.get(key) or "").strip()
+                if value:
+                    answer_lines.append(f"- {key}: {value}")
+
+        chunk_text = "\n".join(
+            [
+                f"Client: {client_name}",
+                f"Project: {project_name}",
+                f"Project key: {project_key}",
+                f"Summary method: {summary_method}",
+                "Summary:",
+                summary,
+                "Questionnaire:",
+                *(answer_lines or ["- none"]),
+            ]
+        )
+        embedding = self.embedder.embed_text(chunk_text)
+        metadata = {
+            "client_name": client_name,
+            "project_key": project_key,
+            "project_name": project_name,
+            "document_kind": "project_summary",
+            "is_client_related": True,
+            "summary_method": summary_method,
+            "source_type": "lazy_llm_summary",
+        }
+        source_document = f"__project_summary__/{client_name}/{project_key}"
+        self.storage.upsert_vector(
+            source_document=source_document,
+            chunk_text=chunk_text,
+            embedding=embedding,
+            metadata=metadata,
+            client_name=client_name,
+        )
 
     def _looks_absent(self, text: str) -> bool:
         low = str(text or "").strip().lower()

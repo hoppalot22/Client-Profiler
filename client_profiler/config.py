@@ -7,15 +7,22 @@ class ProfilerConfig:
     data_dir: Path = Path("./data")
     db_path: Path = Path("./data/profiler.db")
     llm_provider: str = "ollama"
-    llm_model: str = "qwen2.5:0.5b"
+    llm_model: str = "qwen2.5:1.5b"
     ollama_base_url: str = "http://localhost:11434"
     ollama_timeout_seconds: int = 60
     embedding_model: str = "all-MiniLM-L6-v2"
+    ingest_use_llm_extraction: bool = False
+    ingest_use_llm_project_matching: bool = False
+    ingest_generate_project_summaries: bool = False
+    ingest_reconcile_projects: bool = True
+    ingest_auto_merge_cleanup: bool = True
+    merge_cleanup_min_confidence: float = 0.95
     project_summary_questionnaire_path: Path = Path("./data/project_summary_questionnaire.txt")
     project_key_fields_path: Path = Path("./data/project_key_fields.txt")
     project_field_debug_enabled: bool = True
     project_field_debug_log_path: Path = Path("./data/project_field_debug.jsonl")
     max_text_chars_for_llm: int = 12000
+    max_text_chars_for_regex: int = 120000
     default_chunk_size: int = 1200
     default_chunk_overlap: int = 150
 

@@ -215,7 +215,10 @@ class SqliteStorage:
                     json.dumps(metadata, ensure_ascii=True),
                 ),
             )
-        return int(cursor.lastrowid)
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("Failed to persist document row (missing lastrowid).")
+        return int(row_id)
 
     def document_already_ingested(self, source_path: str, content_hash: str) -> bool:
         with self._connect() as conn:
@@ -303,6 +306,38 @@ class SqliteStorage:
                 ),
             )
 
+    def upsert_vector(
+        self,
+        source_document: str,
+        chunk_text: str,
+        embedding: list[float],
+        metadata: dict[str, Any],
+        client_name: str | None = None,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM vectors
+                WHERE source_document = ?
+                  AND COALESCE(client_name, '') = COALESCE(?, '')
+                """,
+                (source_document, client_name),
+            )
+            conn.execute(
+                """
+                INSERT INTO vectors (client_name, source_document, chunk_text, embedding_json, metadata_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    client_name,
+                    source_document,
+                    chunk_text,
+                    json.dumps(embedding),
+                    json.dumps(metadata, ensure_ascii=True),
+                    datetime.utcnow().isoformat(),
+                ),
+            )
+
     def fetch_vectors(
         self,
         client_name: str | None = None,
@@ -326,6 +361,8 @@ class SqliteStorage:
 
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
+
+        query += " ORDER BY source_document, chunk_text, rowid"
 
         with self._connect() as conn:
             rows = conn.execute(query, tuple(params)).fetchall()
@@ -708,6 +745,7 @@ class SqliteStorage:
         value: str,
         status: str,
         evidence: str = "",
+        method: str = "ai",
     ) -> dict[str, Any]:
         existing = self.get_project_key_fields(client_name, project_key) or {"fields": {}}
         fields = dict(existing.get("fields") or {})
@@ -716,6 +754,7 @@ class SqliteStorage:
             "value": str(value or "").strip(),
             "status": str(status or "").strip(),
             "evidence": str(evidence or "").strip(),
+            "method": str(method or "").strip() or "unknown",
             "updated_at": timestamp,
         }
 
@@ -748,7 +787,178 @@ class SqliteStorage:
             "value": fields[str(field_key)]["value"],
             "status": fields[str(field_key)]["status"],
             "evidence": fields[str(field_key)]["evidence"],
+            "method": fields[str(field_key)].get("method") or "unknown",
             "updated_at": timestamp,
+        }
+
+    def reassign_document_projects(self, client_name: str, changes: list[dict[str, Any]]) -> dict[str, int]:
+        assignment_by_path: dict[str, dict[str, Any]] = {}
+        for row in changes:
+            source_path = str(row.get("source_path") or "").strip()
+            if not source_path:
+                continue
+            assignment_by_path[source_path] = {
+                "project_key": str(row.get("new_project_key") or "").strip(),
+                "project_name": str(row.get("new_project_name") or "").strip(),
+                "project_code": str(row.get("new_project_code") or "").strip(),
+                "related_references": [str(value).strip() for value in (row.get("new_related_references") or []) if str(value).strip()],
+                "old_project_key": str(row.get("old_project_key") or "").strip(),
+            }
+
+        if not assignment_by_path:
+            return {
+                "updated_documents": 0,
+                "updated_vectors": 0,
+                "updated_versions": 0,
+                "cleared_project_summaries": 0,
+                "cleared_project_key_fields": 0,
+            }
+
+        updated_documents = 0
+        updated_vectors = 0
+        updated_versions = 0
+        cleared_project_summaries = 0
+        cleared_project_key_fields = 0
+        touched_project_keys: set[str] = set()
+
+        with self._connect() as conn:
+            document_rows = conn.execute(
+                """
+                SELECT id, source_path, metadata_json
+                FROM documents
+                ORDER BY ingested_at DESC
+                """
+            ).fetchall()
+            for doc_id, source_path, metadata_json in document_rows:
+                assignment = assignment_by_path.get(str(source_path or "").strip())
+                if assignment is None:
+                    continue
+                try:
+                    metadata = json.loads(metadata_json)
+                except json.JSONDecodeError:
+                    metadata = {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                if metadata.get("client_name") != client_name:
+                    continue
+
+                metadata["project_key"] = assignment["project_key"] or None
+                metadata["project_name"] = assignment["project_name"] or None
+                metadata["project_code"] = assignment["project_code"] or None
+                metadata["related_references"] = assignment["related_references"]
+                conn.execute(
+                    """
+                    UPDATE documents
+                    SET metadata_json = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(metadata, ensure_ascii=True), doc_id),
+                )
+                updated_documents += 1
+                if assignment["project_key"]:
+                    touched_project_keys.add(assignment["project_key"])
+                if assignment["old_project_key"]:
+                    touched_project_keys.add(assignment["old_project_key"])
+
+            vector_rows = conn.execute(
+                """
+                SELECT id, source_document, metadata_json
+                FROM vectors
+                """
+            ).fetchall()
+            for vector_id, source_document, metadata_json in vector_rows:
+                assignment = assignment_by_path.get(str(source_document or "").strip())
+                if assignment is None:
+                    continue
+                try:
+                    metadata = json.loads(metadata_json)
+                except json.JSONDecodeError:
+                    metadata = {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                metadata["project_key"] = assignment["project_key"] or None
+                metadata["project_name"] = assignment["project_name"] or None
+                metadata["project_code"] = assignment["project_code"] or None
+                metadata["related_references"] = assignment["related_references"]
+                conn.execute(
+                    """
+                    UPDATE vectors
+                    SET metadata_json = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(metadata, ensure_ascii=True), vector_id),
+                )
+                updated_vectors += 1
+
+            version_rows = conn.execute(
+                """
+                SELECT id, source_path, metadata_json, snapshot_json
+                FROM report_versions
+                ORDER BY ingested_at DESC
+                """
+            ).fetchall()
+            for row_id, source_path, metadata_json, snapshot_json in version_rows:
+                assignment = assignment_by_path.get(str(source_path or "").strip())
+                if assignment is None:
+                    continue
+                try:
+                    metadata = json.loads(metadata_json)
+                except json.JSONDecodeError:
+                    metadata = {}
+                try:
+                    snapshot = json.loads(snapshot_json)
+                except json.JSONDecodeError:
+                    snapshot = {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                if not isinstance(snapshot, dict):
+                    snapshot = {}
+
+                metadata["project_key"] = assignment["project_key"] or None
+                metadata["project_name"] = assignment["project_name"] or None
+                metadata["project_code"] = assignment["project_code"] or None
+                snapshot["project_key"] = assignment["project_key"] or None
+                snapshot["project_name"] = assignment["project_name"] or None
+                snapshot["project_code"] = assignment["project_code"] or None
+
+                conn.execute(
+                    """
+                    UPDATE report_versions
+                    SET metadata_json = ?, snapshot_json = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        json.dumps(metadata, ensure_ascii=True),
+                        json.dumps(snapshot, ensure_ascii=True),
+                        row_id,
+                    ),
+                )
+                updated_versions += 1
+
+            for project_key in sorted(touched_project_keys):
+                if not project_key:
+                    continue
+                cleared_project_summaries += conn.execute(
+                    """
+                    DELETE FROM project_summaries
+                    WHERE client_name = ? AND project_key = ?
+                    """,
+                    (client_name, project_key),
+                ).rowcount
+                cleared_project_key_fields += conn.execute(
+                    """
+                    DELETE FROM project_key_fields
+                    WHERE client_name = ? AND project_key = ?
+                    """,
+                    (client_name, project_key),
+                ).rowcount
+
+        return {
+            "updated_documents": int(updated_documents),
+            "updated_vectors": int(updated_vectors),
+            "updated_versions": int(updated_versions),
+            "cleared_project_summaries": int(cleared_project_summaries),
+            "cleared_project_key_fields": int(cleared_project_key_fields),
         }
 
     def get_latest_document_record(self, source_path: str) -> dict[str, Any] | None:
@@ -1166,6 +1376,167 @@ class SqliteStorage:
             outcome = self.delete_client(finding["client_name"], delete_documents=delete_documents)
             results.append({**finding, **outcome})
         return results
+
+    def find_high_confidence_merge_candidates(self, min_confidence: float = 0.95) -> list[dict[str, Any]]:
+        threshold = max(0.0, min(1.0, float(min_confidence)))
+        records = self.list_document_records()
+
+        signals: dict[str, dict[str, Any]] = {}
+        for record in records:
+            metadata = record.get("metadata", {})
+            if not isinstance(metadata, dict):
+                continue
+            client_name = str(metadata.get("client_name") or "").strip()
+            if not client_name:
+                continue
+
+            bucket = signals.setdefault(
+                client_name,
+                {
+                    "doc_count": 0,
+                    "project_codes": set(),
+                    "project_keys": set(),
+                    "references": set(),
+                    "source_stems": set(),
+                },
+            )
+
+            bucket["doc_count"] += 1
+
+            project_code = str(metadata.get("project_code") or "").strip().lower()
+            if project_code:
+                bucket["project_codes"].add(project_code)
+
+            project_key = str(metadata.get("project_key") or "").strip().lower()
+            if project_key:
+                bucket["project_keys"].add(project_key)
+
+            for key in ["quote_number", "purchase_order_number", "access_reference"]:
+                value = str(metadata.get(key) or "").strip().lower()
+                if value:
+                    bucket["references"].add(value)
+
+            for value in metadata.get("related_references") or []:
+                text = str(value).strip().lower()
+                if text:
+                    bucket["references"].add(text)
+
+            source_path = str(record.get("source_path") or "").strip()
+            if source_path:
+                bucket["source_stems"].add(self._name_key(Path(source_path).stem))
+
+        groups: dict[str, list[str]] = {}
+        for client_name in self.list_clients():
+            key = self._name_key(client_name)
+            if key:
+                groups.setdefault(key, []).append(client_name)
+
+        candidates: list[dict[str, Any]] = []
+        for _, names in groups.items():
+            if len(names) < 2:
+                continue
+
+            ordered = sorted(
+                names,
+                key=lambda name: (
+                    -int((signals.get(name) or {}).get("doc_count") or 0),
+                    name.lower(),
+                ),
+            )
+            target = ordered[0]
+            target_signals = signals.get(target, {})
+            target_docs = int(target_signals.get("doc_count") or 0)
+
+            for source in ordered[1:]:
+                source_signals = signals.get(source, {})
+                source_docs = int(source_signals.get("doc_count") or 0)
+                if source_docs <= 0 or target_docs <= 0:
+                    continue
+
+                score = 0.90
+                reasons = ["name_key_match"]
+
+                if source.lower().strip() == target.lower().strip():
+                    score += 0.03
+                    reasons.append("case_variant")
+
+                shared_codes = set(source_signals.get("project_codes") or set()) & set(target_signals.get("project_codes") or set())
+                if shared_codes:
+                    score += 0.02
+                    reasons.append("shared_project_code")
+
+                shared_project_keys = set(source_signals.get("project_keys") or set()) & set(target_signals.get("project_keys") or set())
+                if shared_project_keys:
+                    score += 0.02
+                    reasons.append("shared_project_key")
+
+                shared_refs = set(source_signals.get("references") or set()) & set(target_signals.get("references") or set())
+                if shared_refs:
+                    score += 0.03
+                    reasons.append("shared_references")
+
+                shared_stems = set(source_signals.get("source_stems") or set()) & set(target_signals.get("source_stems") or set())
+                if shared_stems:
+                    score += 0.03
+                    reasons.append("shared_document_stem")
+
+                if min(source_docs, target_docs) >= 3:
+                    score += 0.01
+                    reasons.append("sufficient_documents")
+
+                confidence = min(1.0, score)
+                if confidence < threshold:
+                    continue
+
+                candidates.append(
+                    {
+                        "source_client": source,
+                        "target_client": target,
+                        "confidence": confidence,
+                        "reasons": reasons,
+                        "source_doc_count": source_docs,
+                        "target_doc_count": target_docs,
+                    }
+                )
+
+        candidates.sort(
+            key=lambda row: (
+                -float(row.get("confidence") or 0.0),
+                str(row.get("target_client") or "").lower(),
+                str(row.get("source_client") or "").lower(),
+            )
+        )
+        return candidates
+
+    def cleanup_high_confidence_client_merges(self, min_confidence: float = 0.95, dry_run: bool = False) -> dict[str, Any]:
+        candidates = self.find_high_confidence_merge_candidates(min_confidence=min_confidence)
+        if dry_run:
+            return {
+                "dry_run": True,
+                "min_confidence": float(min_confidence),
+                "candidate_count": len(candidates),
+                "candidates": candidates,
+                "merged": [],
+            }
+
+        merged: list[dict[str, Any]] = []
+        for candidate in candidates:
+            source_client = str(candidate.get("source_client") or "").strip()
+            target_client = str(candidate.get("target_client") or "").strip()
+            if not source_client or not target_client or source_client == target_client:
+                continue
+
+            result = self.merge_clients(source_client, target_client)
+            merged.append({**candidate, **result})
+
+        return {
+            "dry_run": False,
+            "min_confidence": float(min_confidence),
+            "candidate_count": len(candidates),
+            "merged_count": len(merged),
+            "candidates": candidates,
+            "merged": merged,
+        }
 
     def _apply_manual_date_to_profile_nodes(self, source_path: str, report_date: str) -> None:
         with self._connect() as conn:

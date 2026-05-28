@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable
 
 from client_profiler.classification import DocumentClassifier
 from client_profiler.config import ProfilerConfig
@@ -12,6 +14,9 @@ from client_profiler.ingestion import DocumentReader
 from client_profiler.profiling import ProfileBuilder
 from client_profiler.projects import ProjectAssociator, ProjectSummaryService
 from client_profiler.storage import SqliteStorage
+
+
+StatusCallback = Callable[[dict[str, Any]], None]
 
 
 class ClientProfiler:
@@ -30,7 +35,8 @@ class ClientProfiler:
         if config.llm_provider == "ollama":
             llm = OllamaClient(config.ollama_base_url, config.llm_model, timeout=config.ollama_timeout_seconds)
 
-        self.extractor = ProfileExtractor(llm, config)
+        extraction_llm = llm if config.ingest_use_llm_extraction else None
+        self.extractor = ProfileExtractor(extraction_llm, config)
         self.project_associator = ProjectAssociator(self.storage, llm)
         self.summary_service = ProjectSummaryService(
             storage=self.storage,
@@ -40,10 +46,81 @@ class ClientProfiler:
             questionnaire_path=config.project_summary_questionnaire_path,
         )
 
-    def ingest_file(self, path: Path, force_reingest: bool = False) -> dict:
+    def _rebind_storage(self) -> None:
+        self.storage = SqliteStorage(self.config.db_path)
+        self.retriever = VectorRetriever(self.storage)
+        self.profile_builder.storage = self.storage
+        self.project_associator.storage = self.storage
+        self.summary_service.storage = self.storage
+        self.summary_service.retriever = self.retriever
+
+    def reset_db(self, backup: bool = True) -> dict[str, Any]:
+        db_path = self.config.db_path
+        backup_path: Path | None = None
+
+        if db_path.exists():
+            if backup:
+                stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                candidate = db_path.with_name(f"{db_path.name}.bak_{stamp}")
+                suffix = 1
+                while candidate.exists():
+                    candidate = db_path.with_name(f"{db_path.name}.bak_{stamp}_{suffix}")
+                    suffix += 1
+                db_path.replace(candidate)
+                backup_path = candidate
+            else:
+                db_path.unlink()
+
+        self._rebind_storage()
+        return {
+            "reset": True,
+            "db_path": str(db_path),
+            "backup_path": str(backup_path) if backup_path is not None else "",
+        }
+
+    def cleanup_high_confidence_client_merges(self, min_confidence: float | None = None, dry_run: bool = False) -> dict[str, Any]:
+        threshold = float(min_confidence) if min_confidence is not None else float(self.config.merge_cleanup_min_confidence)
+        result = self.storage.cleanup_high_confidence_client_merges(min_confidence=threshold, dry_run=dry_run)
+
+        if (not dry_run) and self.config.ingest_reconcile_projects:
+            targets = sorted(
+                {
+                    str(row.get("target_client") or "").strip()
+                    for row in result.get("merged", [])
+                    if isinstance(row, dict)
+                }
+                - {""}
+            )
+            for client_name in targets:
+                self.project_associator.reconcile_client_projects(client_name, apply_changes=True)
+            result["reconciled_clients"] = targets
+
+        return result
+
+    def ingest_file(
+        self,
+        path: Path,
+        force_reingest: bool = False,
+        status_callback: StatusCallback | None = None,
+        run_reconciliation: bool = True,
+    ) -> dict:
+        _emit_status(status_callback, event="file_started", path=str(path), force_reingest=force_reingest)
         doc = self.reader.read(path)
+        _emit_status(
+            status_callback,
+            event="file_read",
+            path=str(path),
+            source_type=doc.source_type,
+            text_chars=len(doc.text),
+        )
         content_hash = hashlib.sha256(doc.text.encode("utf-8", errors="ignore")).hexdigest()
         if (not force_reingest) and self.storage.document_already_ingested(str(doc.source_path), content_hash):
+            _emit_status(
+                status_callback,
+                event="file_skipped_duplicate",
+                path=str(path),
+                content_hash=content_hash,
+            )
             return {
                 "path": str(path),
                 "status": "skipped_duplicate",
@@ -52,7 +129,23 @@ class ClientProfiler:
             }
 
         classification = self.classifier.classify(doc.text)
+        _emit_status(
+            status_callback,
+            event="classification_completed",
+            path=str(path),
+            document_kind=classification.document_kind,
+            is_client_related=classification.is_client_related,
+            confidence=classification.confidence,
+        )
         extracted = self.extractor.extract(doc.text, classification)
+        _emit_status(
+            status_callback,
+            event="extraction_completed",
+            path=str(path),
+            events_extracted=len(extracted.events),
+            key_findings=len(extracted.insight.key_findings),
+            recommendations=len(extracted.insight.recommendations),
+        )
 
         explicit_client_name = self._guess_client_name(path, doc.text)
         inferred_by_references = False
@@ -75,7 +168,19 @@ class ClientProfiler:
         ):
             extracted.client_name = None
 
-        project_details = self.project_associator.resolve_project(str(doc.source_path), doc.text, extracted)
+        project_details = self.project_associator.resolve_project(
+            str(doc.source_path),
+            doc.text,
+            extracted,
+            allow_llm_match=self.config.ingest_use_llm_project_matching,
+        )
+        _emit_status(
+            status_callback,
+            event="project_resolution_completed",
+            path=str(path),
+            project_key=project_details.get("project_key"),
+            project_name=project_details.get("project_name"),
+        )
         extracted.additional_fields.update(project_details)
 
         report_date = extracted.additional_fields.get("report_date")
@@ -102,6 +207,7 @@ class ClientProfiler:
                 "related_references": extracted.additional_fields.get("related_references", []),
             },
         )
+        _emit_status(status_callback, event="document_record_saved", path=str(path))
 
         version_snapshot = {
             "content_hash": content_hash,
@@ -128,13 +234,29 @@ class ClientProfiler:
             },
             snapshot=version_snapshot,
         )
+        _emit_status(status_callback, event="report_version_saved", path=str(path))
 
         if classification.is_client_related and extracted.client_name:
             project_key = extracted.additional_fields.get("project_key")
             project_name = extracted.additional_fields.get("project_name")
             self.profile_builder.apply(str(path), extracted)
+            _emit_status(
+                status_callback,
+                event="profile_updated",
+                path=str(path),
+                client_name=extracted.client_name,
+                project_key=project_key,
+                project_name=project_name,
+            )
 
-        for idx, chunk in enumerate(_chunk_text(doc.text, self.config.default_chunk_size, self.config.default_chunk_overlap)):
+        chunks = _chunk_text(doc.text, self.config.default_chunk_size, self.config.default_chunk_overlap)
+        _emit_status(
+            status_callback,
+            event="chunk_embedding_started",
+            path=str(path),
+            total_chunks=len(chunks),
+        )
+        for idx, chunk in enumerate(chunks):
             embedding = self.embedder.embed_text(chunk)
             self.storage.add_vector(
                 source_document=str(path),
@@ -155,13 +277,38 @@ class ClientProfiler:
                 },
                 client_name=extracted.client_name,
             )
+            _emit_status(
+                status_callback,
+                event="chunk_embedded",
+                path=str(path),
+                chunk_index=idx + 1,
+                total_chunks=len(chunks),
+            )
+        _emit_status(
+            status_callback,
+            event="chunk_embedding_completed",
+            path=str(path),
+            total_chunks=len(chunks),
+        )
 
-        if classification.is_client_related and extracted.client_name:
+        if (
+            self.config.ingest_generate_project_summaries
+            and classification.is_client_related
+            and extracted.client_name
+        ):
             project_key = str(extracted.additional_fields.get("project_key") or "").strip()
             project_name = str(extracted.additional_fields.get("project_name") or "").strip()
             if project_key and project_name:
                 existing = self.storage.get_project_summary(extracted.client_name, project_key)
                 if existing is None:
+                    _emit_status(
+                        status_callback,
+                        event="summary_generation_started",
+                        path=str(path),
+                        client_name=extracted.client_name,
+                        project_key=project_key,
+                        project_name=project_name,
+                    )
                     project_docs = self.storage.list_project_documents(extracted.client_name, project_key)
                     self.summary_service.generate_and_store(
                         client_name=extracted.client_name,
@@ -169,8 +316,54 @@ class ClientProfiler:
                         project_name=project_name,
                         documents=project_docs,
                     )
+                    _emit_status(
+                        status_callback,
+                        event="summary_generation_completed",
+                        path=str(path),
+                        client_name=extracted.client_name,
+                        project_key=project_key,
+                        project_name=project_name,
+                    )
 
-        return {
+        if self.config.ingest_reconcile_projects and run_reconciliation and extracted.client_name:
+            _emit_status(
+                status_callback,
+                event="project_reconciliation_started",
+                path=str(path),
+                client_name=extracted.client_name,
+            )
+            self.project_associator.reconcile_client_projects(
+                extracted.client_name,
+                apply_changes=True,
+            )
+            _emit_status(
+                status_callback,
+                event="project_reconciliation_completed",
+                path=str(path),
+                client_name=extracted.client_name,
+            )
+
+        cleanup_result: dict[str, Any] | None = None
+        if self.config.ingest_auto_merge_cleanup and run_reconciliation:
+            _emit_status(
+                status_callback,
+                event="merge_cleanup_started",
+                path=str(path),
+                min_confidence=self.config.merge_cleanup_min_confidence,
+            )
+            cleanup_result = self.cleanup_high_confidence_client_merges(
+                min_confidence=self.config.merge_cleanup_min_confidence,
+                dry_run=False,
+            )
+            _emit_status(
+                status_callback,
+                event="merge_cleanup_completed",
+                path=str(path),
+                candidate_count=int(cleanup_result.get("candidate_count") or 0),
+                merged_count=int(cleanup_result.get("merged_count") or 0),
+            )
+
+        result = {
             "path": str(path),
             "status": "reingested" if force_reingest else "ingested",
             "document_kind": classification.document_kind,
@@ -182,23 +375,121 @@ class ClientProfiler:
             "events_extracted": len(extracted.events),
             "key_findings": len(extracted.insight.key_findings),
             "recommendations": len(extracted.insight.recommendations),
+            "ingest_llm_enabled": self.config.ingest_use_llm_extraction,
+            "ingest_summary_generated": self.config.ingest_generate_project_summaries,
+            "merge_cleanup_candidate_count": int((cleanup_result or {}).get("candidate_count") or 0),
+            "merge_cleanup_merged_count": int((cleanup_result or {}).get("merged_count") or 0),
         }
+        _emit_status(
+            status_callback,
+            event="file_completed",
+            path=str(path),
+            status=result.get("status"),
+            document_kind=result.get("document_kind"),
+            client_name=result.get("client_name"),
+        )
+        return result
 
-    def ingest_directory(self, directory: Path, recursive: bool = True, force_reingest: bool = False) -> list[dict]:
-        files = directory.rglob("*") if recursive else directory.glob("*")
+    def ingest_directory(
+        self,
+        directory: Path,
+        recursive: bool = True,
+        force_reingest: bool = False,
+        status_callback: StatusCallback | None = None,
+    ) -> list[dict]:
+        iterator = directory.rglob("*") if recursive else directory.glob("*")
+        file_paths = [file_path for file_path in iterator if file_path.is_file()]
+        _emit_status(
+            status_callback,
+            event="directory_scanned",
+            directory=str(directory),
+            recursive=recursive,
+            total_files=len(file_paths),
+            force_reingest=force_reingest,
+        )
         results: list[dict] = []
-        for file_path in files:
-            if not file_path.is_file():
-                continue
+        for file_path in file_paths:
             try:
-                results.append(self.ingest_file(file_path, force_reingest=force_reingest))
+                results.append(
+                    self.ingest_file(
+                        file_path,
+                        force_reingest=force_reingest,
+                        status_callback=status_callback,
+                        run_reconciliation=False,
+                    )
+                )
             except Exception as exc:
+                _emit_status(
+                    status_callback,
+                    event="file_error",
+                    path=str(file_path),
+                    error=str(exc),
+                )
                 results.append(
                     {
                         "path": str(file_path),
                         "error": str(exc),
                     }
                 )
+
+        if self.config.ingest_reconcile_projects:
+            touched_clients = sorted(
+                {
+                    str(row.get("client_name") or "").strip()
+                    for row in results
+                    if isinstance(row, dict)
+                }
+                - {""}
+            )
+            for client_name in touched_clients:
+                _emit_status(
+                    status_callback,
+                    event="project_reconciliation_started",
+                    directory=str(directory),
+                    client_name=client_name,
+                )
+                self.project_associator.reconcile_client_projects(client_name, apply_changes=True)
+                _emit_status(
+                    status_callback,
+                    event="project_reconciliation_completed",
+                    directory=str(directory),
+                    client_name=client_name,
+                )
+
+        cleanup_result: dict[str, Any] | None = None
+        if self.config.ingest_auto_merge_cleanup:
+            _emit_status(
+                status_callback,
+                event="merge_cleanup_started",
+                directory=str(directory),
+                min_confidence=self.config.merge_cleanup_min_confidence,
+            )
+            cleanup_result = self.cleanup_high_confidence_client_merges(
+                min_confidence=self.config.merge_cleanup_min_confidence,
+                dry_run=False,
+            )
+            _emit_status(
+                status_callback,
+                event="merge_cleanup_completed",
+                directory=str(directory),
+                candidate_count=int(cleanup_result.get("candidate_count") or 0),
+                merged_count=int(cleanup_result.get("merged_count") or 0),
+            )
+
+        if cleanup_result is not None:
+            for row in results:
+                if isinstance(row, dict) and "error" not in row:
+                    row["merge_cleanup_candidate_count"] = int(cleanup_result.get("candidate_count") or 0)
+                    row["merge_cleanup_merged_count"] = int(cleanup_result.get("merged_count") or 0)
+
+        _emit_status(
+            status_callback,
+            event="directory_completed",
+            directory=str(directory),
+            total_files=len(file_paths),
+            succeeded=sum(1 for row in results if "error" not in row),
+            failed=sum(1 for row in results if "error" in row),
+        )
         return results
 
     def _guess_client_name(self, path: Path, text: str) -> str | None:
@@ -353,3 +644,12 @@ def _guess_title(text: str, path: Path) -> str:
         if len(candidate) > 8:
             return candidate[:200]
     return path.stem.replace("_", " ")
+
+
+def _emit_status(callback: StatusCallback | None, **payload: Any) -> None:
+    if callback is None:
+        return
+    try:
+        callback(payload)
+    except Exception:
+        return

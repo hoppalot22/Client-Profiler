@@ -11,55 +11,46 @@ from client_profiler.extraction import OllamaClient
 from client_profiler.storage import SqliteStorage
 
 
-ABSENT_VALUE = ""
+ABSENT_VALUE = "Information not present"
 FIELD_CONTEXT_BUDGETS: dict[str, tuple[int, int]] = {
-    "title": (520, 220),
-    "scope": (760, 260),
-    "participants": (740, 260),
-    "date": (520, 200),
-    "quoted": (560, 210),
-    "invoice": (560, 210),
-    "findings": (860, 320),
-    "recommendations": (860, 320),
-    "gaps": (760, 280),
+    "title": (900, 360),
+    "scope": (1200, 420),
+    "participants": (1100, 420),
+    "date": (1000, 380),
+    "quoted": (900, 340),
+    "invoice": (900, 340),
+    "findings": (1400, 520),
+    "recommendations": (1400, 520),
+    "gaps": (1200, 460),
 }
 
 FIELD_PROFILES: dict[str, dict[str, Any]] = {
     "title": {
         "terms": ["title", "project", "assessment", "audit", "review"],
-        "max_words": 8,
     },
     "scope": {
         "terms": ["scope", "work", "assessment", "audit", "review", "inspection"],
-        "max_words": 18,
     },
     "participants": {
         "terms": ["participant", "contact", "author", "stakeholder", "team"],
-        "max_words": 18,
     },
     "date": {
-        "terms": ["date", "submitted", "issued", "report", "timeline"],
-        "max_words": 8,
+        "terms": ["date", "submitted", "issued", "report", "timeline", "milestone", "inspection", "approval"],
     },
     "quoted": {
         "terms": ["quote", "$", "price", "cost", "estimate"],
-        "max_words": 10,
     },
     "invoice": {
         "terms": ["invoice", "$", "amount", "billing", "payment"],
-        "max_words": 10,
     },
     "findings": {
         "terms": ["finding", "issue", "risk", "observation", "defect"],
-        "max_words": 20,
     },
     "recommendations": {
         "terms": ["recommend", "action", "should", "mitigation", "next"],
-        "max_words": 20,
     },
     "gaps": {
         "terms": ["missing", "unknown", "gap", "uncertain", "not provided"],
-        "max_words": 18,
     },
 }
 
@@ -127,6 +118,8 @@ class ProjectFieldService:
             return {"ok": False, "error_code": "no_project_documents", "error_message": "No project documents found."}
 
         profile = self._field_profile(field_key)
+        max_words_raw = profile.get("max_words")
+        max_words = int(max_words_raw) if isinstance(max_words_raw, (int, float)) else None
         local_evidence = self._build_local_field_evidence(field_key, field_prompt, documents)
 
         # Only use broad RAG when local project evidence is thin.
@@ -151,11 +144,18 @@ class ProjectFieldService:
         }
         compact_fields = self._compact_known_fields(context_fields, field_key)
 
+        max_words_instruction = (
+            f"If present, value must be <= {max_words} words. "
+            if max_words is not None
+            else "If present, return a concise value with complete meaning. "
+        )
+
         prompt = (
             'Return STRICT JSON only: {"is_present":true|false,"value":"...","evidence":"..."}. '
-            f"If present, value must be <= {int(profile['max_words'])} words. "
+            f"{max_words_instruction}"
             "Use only explicit project evidence below. If missing/uncertain set is_present=false and value to an empty string. "
-            "Do not guess.\n\n"
+            "Do not guess.\n"
+            f"Field-specific rules: {self._field_specific_guardrails(field_key)}\n\n"
             f"Project: {project_name}\n"
             f"Field: {field_key}\n"
             f"Instruction: {field_prompt}\n"
@@ -191,7 +191,7 @@ class ProjectFieldService:
             return {"ok": False, "error_code": code, "error_message": self._llm_error_message(code)}
 
         is_present = bool(result.get("is_present"))
-        value = self._short_value(str(result.get("value") or "").strip(), int(profile["max_words"]))
+        value = self._short_value(str(result.get("value") or "").strip(), max_words)
         evidence = str(result.get("evidence") or "").strip()
         if (not is_present) or (not value):
             stored = self.storage.upsert_project_key_field(
@@ -202,7 +202,9 @@ class ProjectFieldService:
                 value=ABSENT_VALUE,
                 status="absent",
                 evidence=evidence,
+                method="ai",
             )
+            self._refresh_project_fields_embedding(client_name, project_key, project_name)
             self._write_debug_log({**debug_payload, "ok": True, "status": "absent", "value_words": 0})
             return {"ok": True, **stored}
 
@@ -214,7 +216,9 @@ class ProjectFieldService:
             value=value,
             status="filled",
             evidence=evidence,
+            method="ai",
         )
+        self._refresh_project_fields_embedding(client_name, project_key, project_name)
         self._write_debug_log(
             {
                 **debug_payload,
@@ -224,6 +228,44 @@ class ProjectFieldService:
             }
         )
         return {"ok": True, **stored}
+
+    def _refresh_project_fields_embedding(self, client_name: str, project_key: str, project_name: str) -> None:
+        fields = self.project_field_values(client_name, project_key)
+        if not isinstance(fields, dict) or not fields:
+            return
+
+        ordered_keys = [row["key"] for row in self.field_definitions()]
+        lines = [
+            f"Client: {client_name}",
+            f"Project: {project_name}",
+            f"Project key: {project_key}",
+            "Key fields:",
+        ]
+        for key in ordered_keys:
+            payload = fields.get(key, {}) if isinstance(fields.get(key, {}), dict) else {}
+            value = str(payload.get("value") or ABSENT_VALUE).strip() or ABSENT_VALUE
+            status = str(payload.get("status") or "unknown").strip()
+            method = str(payload.get("method") or "unknown").strip()
+            lines.append(f"- {key}: {value} (status={status}, method={method})")
+
+        chunk_text = "\n".join(lines)
+        embedding = self.embedder.embed_text(chunk_text)
+        source_document = f"__project_fields__/{client_name}/{project_key}"
+        metadata = {
+            "client_name": client_name,
+            "project_key": project_key,
+            "project_name": project_name,
+            "document_kind": "project_fields",
+            "is_client_related": True,
+            "source_type": "lazy_llm_fields",
+        }
+        self.storage.upsert_vector(
+            source_document=source_document,
+            chunk_text=chunk_text,
+            embedding=embedding,
+            metadata=metadata,
+            client_name=client_name,
+        )
 
     def _build_query_text(self, project_name: str, field_key: str, field_prompt: str, documents: list[dict[str, Any]]) -> str:
         profile = self._field_profile(field_key)
@@ -244,7 +286,7 @@ class ProjectFieldService:
     ) -> list[dict[str, Any]]:
         profile = self._field_profile(field_key)
         terms = [str(t).lower() for t in profile["terms"]]
-        project_sources = list(project_hints.get("source_documents") or [])
+        project_sources = sorted(str(p).strip() for p in (project_hints.get("source_documents") or []) if str(p).strip())
         metadata_filters = self._metadata_filters_for_field(field_key)
 
         hits = self.retriever.search(
@@ -296,13 +338,14 @@ class ProjectFieldService:
                 continue
             score = float(hit.get("score") or 0.0) + (0.04 * keyword_score)
 
-            metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+            metadata_raw = hit.get("metadata")
+            metadata: dict[str, Any] = metadata_raw if isinstance(metadata_raw, dict) else {}
             if hint_key and str(metadata.get("project_key") or "").strip().lower() == hint_key:
                 score += 0.12
             if hint_code and str(metadata.get("project_code") or "").strip().lower() == hint_code:
                 score += 0.08
 
-            metadata_refs = metadata.get("related_references", []) if isinstance(metadata, dict) else []
+            metadata_refs = metadata.get("related_references", [])
             if isinstance(metadata_refs, list):
                 refs = {str(v).strip().lower() for v in metadata_refs if str(v).strip()}
                 if refs & hint_refs:
@@ -317,7 +360,13 @@ class ProjectFieldService:
             score += temporal
 
             scored.append((score, hit))
-        scored.sort(key=lambda item: item[0], reverse=True)
+        scored.sort(
+            key=lambda item: (
+                -item[0],
+                str(item[1].get("source_document") or ""),
+                str(item[1].get("chunk_text") or ""),
+            )
+        )
         out: list[dict[str, Any]] = []
         seen: set[str] = set()
         for _, hit in scored:
@@ -465,6 +514,10 @@ class ProjectFieldService:
             for term in terms:
                 if term in text_for_score:
                     match_score += 1
+            if field_key == "recommendations" and not self._contains_recommendation_signal(text_for_score):
+                match_score -= 2
+            if field_key == "findings" and not self._contains_finding_signal(text_for_score):
+                match_score -= 2
             if field_key in {"quoted", "invoice"} and doc.get("currency_amounts"):
                 amounts = ",".join((doc.get("currency_amounts") or [])[:2])
                 snippet = f"amounts: {amounts}; {snippet}".strip("; ")
@@ -473,13 +526,15 @@ class ProjectFieldService:
                 people = ",".join((doc.get("contacts") or doc.get("authors") or [])[:4])
                 snippet = f"people: {people}; {snippet}".strip("; ")
                 match_score += 2
+            if field_key in {"recommendations", "findings"} and self._is_commercial_only_text(text_for_score):
+                match_score -= 2
 
             if match_score <= 0:
                 continue
             evidence = f"- {meta} refs:{refs} {snippet}".strip()
             rows.append((match_score, evidence))
 
-        rows.sort(key=lambda item: item[0], reverse=True)
+        rows.sort(key=lambda item: (-item[0], item[1]))
         return [row for _, row in rows[:4]]
 
     def _extract_focus_snippet(self, text: str, terms: list[str], max_chars: int = 160) -> str:
@@ -487,16 +542,49 @@ class ProjectFieldService:
         if not raw:
             return ""
         lower = raw.lower()
-        idx = -1
+        candidate_positions: list[int] = []
         for term in terms:
-            pos = lower.find(term)
-            if pos >= 0:
-                idx = pos
-                break
-        if idx < 0:
+            for match in re.finditer(re.escape(term), lower):
+                candidate_positions.append(match.start())
+
+        if not candidate_positions:
             return raw[:max_chars]
-        start = max(0, idx - 40)
+
+        signal_terms = [
+            "finding",
+            "issue",
+            "risk",
+            "defect",
+            "recommend",
+            "action",
+            "should",
+            "repair",
+            "replace",
+            "monitor",
+            "mitigate",
+            "compliance",
+        ]
+        best_idx = candidate_positions[0]
+        best_score = -1
+        for idx in candidate_positions:
+            start = max(0, idx - 60)
+            end = min(len(raw), start + max_chars)
+            window = lower[start:end]
+            score = sum(1 for cue in signal_terms if cue in window)
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+
+        start = max(0, best_idx - 40)
+        if start > 0:
+            prev_space = raw.rfind(" ", 0, start)
+            if prev_space > 0:
+                start = prev_space + 1
         end = min(len(raw), start + max_chars)
+        if end < len(raw):
+            next_space = raw.find(" ", end)
+            if next_space > 0:
+                end = next_space
         return raw[start:end].strip()
 
     def _compact_known_fields(self, context_fields: dict[str, str], current_field: str) -> str:
@@ -525,11 +613,71 @@ class ProjectFieldService:
         text = str(value or "").strip()
         return text if text else "- none"
 
+    def _field_specific_guardrails(self, field_key: str) -> str:
+        if field_key == "date":
+            return (
+                "Return all key project dates as concise labeled entries in the format `label: YYYY-MM-DD` when possible, "
+                "separated by `; `. Include milestones/report/inspection/approval dates when explicitly evidenced. "
+                "Do not omit key dates that are explicitly present."
+            )
+        if field_key == "recommendations":
+            return (
+                "Return only explicit technical actions/recommendations from report narrative. "
+                "Reject answers that are only quote/invoice/price/PO status without an action."
+            )
+        if field_key == "findings":
+            return (
+                "Return observed conditions, defects, risks, or compliance issues. "
+                "Do not return recommendations or commercial values unless tied to a finding."
+            )
+        if field_key == "quoted":
+            return "Return only quoted/estimated amount; do not return invoice totals or recommendation text."
+        if field_key == "invoice":
+            return "Return only invoiced/billed amount; do not return quote estimates or recommendation text."
+        return "Prioritize direct report evidence for this field and avoid cross-field substitution."
+
+    def _contains_recommendation_signal(self, text: str) -> bool:
+        cues = [
+            "recommend",
+            "should",
+            "action",
+            "mitigate",
+            "repair",
+            "replace",
+            "monitor",
+            "follow-up",
+            "implement",
+        ]
+        return any(cue in text for cue in cues)
+
+    def _contains_finding_signal(self, text: str) -> bool:
+        cues = [
+            "finding",
+            "issue",
+            "risk",
+            "defect",
+            "non-compliance",
+            "observed",
+            "condition",
+            "failure",
+            "gap",
+        ]
+        return any(cue in text for cue in cues)
+
+    def _is_commercial_only_text(self, text: str) -> bool:
+        commercial_cues = ["quote", "quoted", "invoice", "price", "cost", "purchase order", "po", "billing"]
+        technical_cues = ["recommend", "issue", "risk", "defect", "repair", "replace", "monitor", "compliance"]
+        has_commercial = any(cue in text for cue in commercial_cues)
+        has_technical = any(cue in text for cue in technical_cues)
+        return has_commercial and not has_technical
+
     def _field_profile(self, field_key: str) -> dict[str, Any]:
         return FIELD_PROFILES.get(field_key, {"terms": [field_key], "max_words": 16})
 
-    def _short_value(self, value: str, max_words: int) -> str:
+    def _short_value(self, value: str, max_words: int | None) -> str:
         words = str(value or "").split()
+        if max_words is None:
+            return " ".join(words)
         if len(words) <= max_words:
             return " ".join(words)
         return " ".join(words[:max_words]).strip()

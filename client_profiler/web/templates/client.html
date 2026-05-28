@@ -103,6 +103,9 @@
             <p class="project-summary-text">{{ project.summary }}</p>
             <div class="project-summary-status" aria-live="polite"></div>
             <div class="timeline-meta">
+              <span class="chip summary-source-chip{% if project.summary_source == 'Fallback' %} summary-source-fallback{% elif project.summary_source == 'Rule' %} summary-source-rule{% endif %}">
+                {% if project.summary_source == 'AI' %}✓ AI summary{% elif project.summary_source == 'Fallback' %}✓ Fallback summary{% else %}✓ Rule summary{% endif %}
+              </span>
               {% if project.has_ai_summary and project.ai_summary_updated_at %}
               <span class="chip ai-summary-updated-chip" data-updated-at="{{ project.ai_summary_updated_at | e }}">AI summary updated: {{ project.ai_summary_updated_at }}</span>
               {% endif %}
@@ -111,16 +114,28 @@
             </div>
 
             <div class="project-key-fields">
-              <strong>Key Fields</strong>
+              <div class="project-key-fields-header">
+                <strong>Key Fields</strong>
+                <button class="btn-generate-summary btn-regenerate-fields" type="button">Regenerate Key Fields</button>
+              </div>
+              <div class="project-key-fields-status" aria-live="polite"></div>
               <div class="project-key-field-list">
                 {% for field in project.key_fields %}
                 <div
-                  class="project-key-field-row"
+                  class="project-key-field-row{% if field.error_message %} field-error{% endif %}"
                   data-field-key="{{ field.key | e }}"
+                  data-field-method="{{ field.method | e }}"
                   data-needs-generation="{{ 'true' if field.needs_generation else 'false' }}"
+                  data-error-message="{{ field.error_message | e }}"
                 >
                   <span class="project-key-field-label">{{ field.label }}</span>
-                  <span class="project-key-field-value">{{ field.value }}</span>
+                  <div class="project-key-field-value-wrap">
+                    <span class="project-key-field-value">{{ field.value }}</span>
+                    <span class="project-key-field-error" {% if not field.error_message %}hidden{% endif %}>{{ field.error_message }}</span>
+                  </div>
+                  <span class="project-key-field-source {% if field.method == 'ai' %}source-ai{% elif field.method == 'fallback' %}source-fallback{% endif %}">
+                    {% if field.method == 'ai' %}✓ AI{% elif field.method == 'fallback' %}✓ Fallback{% else %}○ Pending{% endif %}
+                  </span>
                   <span class="project-key-field-tag" hidden>Generating...</span>
                 </div>
                 {% endfor %}
@@ -227,6 +242,24 @@
     return dt.toLocaleString();
   }
 
+  function applySummarySource(metaEl, method) {
+    if (!metaEl) return;
+    var chip = metaEl.querySelector('.summary-source-chip');
+    if (!chip) return;
+    chip.classList.remove('summary-source-fallback', 'summary-source-rule');
+    if (method === 'ai') {
+      chip.textContent = '\u2713 AI summary';
+      return;
+    }
+    if (String(method || '').indexOf('fallback') !== -1) {
+      chip.textContent = '\u2713 Fallback summary';
+      chip.classList.add('summary-source-fallback');
+      return;
+    }
+    chip.textContent = '\u2713 Rule summary';
+    chip.classList.add('summary-source-rule');
+  }
+
   document.querySelectorAll('.ai-summary-updated-chip').forEach(function (chip) {
     const raw = chip.dataset.updatedAt || '';
     chip.textContent = 'AI summary updated: ' + formatUpdatedAt(raw);
@@ -260,6 +293,7 @@
           if (!res.ok) throw new Error(res.data.detail || 'Server error');
           if (summaryEl) summaryEl.textContent = res.data.summary;
           if (metaEl) {
+            applySummarySource(metaEl, res.data.method || 'ai');
             let chip = metaEl.querySelector('.ai-summary-updated-chip');
             const raw = res.data.updated_at || new Date().toISOString();
             if (!chip) {
@@ -297,7 +331,24 @@
       const projectKey = card.dataset.projectKey;
       const fieldKey = row.dataset.fieldKey;
       const valueEl = row.querySelector('.project-key-field-value');
+      const sourceEl = row.querySelector('.project-key-field-source');
       const tagEl = row.querySelector('.project-key-field-tag');
+      const errorEl = row.querySelector('.project-key-field-error');
+
+      function setFieldError(message) {
+        const text = String(message || '').trim();
+        if (errorEl) {
+          errorEl.textContent = text;
+          errorEl.hidden = !text;
+        }
+        row.dataset.errorMessage = text;
+        row.title = text;
+        if (text) {
+          row.classList.add('field-error');
+        } else {
+          row.classList.remove('field-error');
+        }
+      }
 
       row.classList.add('generating');
       if (tagEl) tagEl.hidden = false;
@@ -312,18 +363,83 @@
         .then(function (res) {
           if (!res.ok) throw new Error(res.data.detail || 'Server error');
           if (valueEl) valueEl.textContent = res.data.value || '';
+          var method = (res.data.method || '').toLowerCase();
+          row.dataset.fieldMethod = method;
+          if (sourceEl) {
+            sourceEl.classList.remove('source-ai', 'source-fallback');
+            if (method === 'ai') {
+              sourceEl.classList.add('source-ai');
+              sourceEl.textContent = '\u2713 AI';
+            } else if (method === 'fallback') {
+              sourceEl.classList.add('source-fallback');
+              sourceEl.textContent = '\u2713 Fallback';
+            } else {
+              sourceEl.textContent = '\u25cb Pending';
+            }
+          }
+          const apiError = String(res.data.error_message || '').trim();
+          setFieldError(apiError);
           row.dataset.needsGeneration = 'false';
-          row.classList.remove('field-error');
+          resolve({ ok: !apiError });
         })
         .catch(function (err) {
-          row.classList.add('field-error');
-          row.title = err.message;
+          setFieldError(err.message || 'Unknown generation error.');
+          resolve({ ok: false });
         })
         .finally(function () {
           row.classList.remove('generating');
           if (tagEl) tagEl.hidden = true;
-          resolve();
         });
+    });
+  }
+
+  function runAllFieldGeneration(card, btn) {
+    const rows = Array.from(card.querySelectorAll('.project-key-field-row'));
+    const statusEl = card.querySelector('.project-key-fields-status');
+    if (rows.length === 0) return Promise.resolve();
+
+    const originalLabel = btn ? btn.textContent : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Regenerating…';
+    }
+    if (statusEl) {
+      statusEl.textContent = 'Regenerating key fields…';
+      statusEl.className = 'project-key-fields-status';
+    }
+
+    return rows.reduce(function (chain, row) {
+      return chain.then(function (stats) {
+        return runFieldGeneration(card, row).then(function (result) {
+          var ok = Boolean(result && result.ok);
+          return {
+            total: stats.total + 1,
+            failed: stats.failed + (ok ? 0 : 1)
+          };
+        });
+      });
+    }, Promise.resolve({ total: 0, failed: 0 })).then(function (stats) {
+      if (stats.failed > 0) {
+        if (statusEl) {
+          statusEl.textContent = 'Some key fields failed to regenerate. See inline error messages.';
+          statusEl.className = 'project-key-fields-status summary-error';
+        }
+        return;
+      }
+      if (statusEl) {
+        statusEl.textContent = '\u2713 Key fields regenerated';
+        statusEl.className = 'project-key-fields-status summary-ok';
+      }
+    }).catch(function () {
+      if (statusEl) {
+        statusEl.textContent = 'Some key fields failed to regenerate. See inline error messages.';
+        statusEl.className = 'project-key-fields-status summary-error';
+      }
+    }).finally(function () {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = originalLabel || 'Regenerate Key Fields';
+      }
     });
   }
 
@@ -332,6 +448,15 @@
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
       runSummarise(btn);
+    });
+  });
+
+  document.querySelectorAll('.btn-regenerate-fields').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      const card = btn.closest('.project-node');
+      if (!card) return;
+      runAllFieldGeneration(card, btn);
     });
   });
 

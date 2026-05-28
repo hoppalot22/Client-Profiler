@@ -167,7 +167,8 @@ def run_smoke_test() -> None:
             if node["node_path"] == "Projects/Crude Unit Outage Planning"
         ]
         assert project_nodes, "Expected top-level project node for Crude Unit Outage Planning"
-        assert project_nodes[0]["facts"].get("project_summary"), project_nodes[0]["facts"]
+        # Two-tier ingest defaults to deferred LLM enrichment, so summaries should not be generated during ingest.
+        assert not project_nodes[0]["facts"].get("project_summary"), project_nodes[0]["facts"]
 
         query_embedding = profiler.embedder.embed_text("weld 6 recommendations")
         hits = VectorRetriever(profiler.storage).search(query_embedding, top_k=3, client_name="Acme Refining")

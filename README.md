@@ -45,15 +45,29 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
 
 ## Usage
 
+### Two-tier ingest (default)
+
+- Ingestion now defaults to a fast deterministic path (parse/classify/metadata/vector storage) with LLM-heavy enrichment deferred.
+- Project key fields are generated on demand from the UI, field-by-field.
+- Project summaries are generated on demand (or when explicitly enabled during ingest).
+
 - Ingest one file:
   - `python cli.py ingest-file "path/to/document.pdf"`
   - Force re-ingest (captures updates/drafts becoming final):
     - `python cli.py ingest-file "path/to/document.pdf" --force`
+  - Disable live terminal status/progress output:
+    - `python cli.py ingest-file "path/to/document.pdf" --no-status`
+  - Enable full LLM ingest behavior (slower):
+    - `python cli.py ingest-file "path/to/document.pdf" --enable-ingest-llm --generate-project-summaries`
 
 - Ingest folder recursively:
   - `python cli.py ingest-dir "path/to/documents"`
   - Force re-ingest all files:
     - `python cli.py ingest-dir "path/to/documents" --force`
+  - Disable live terminal status/progress output:
+    - `python cli.py ingest-dir "path/to/documents" --no-status`
+  - Enable full LLM ingest behavior (slower):
+    - `python cli.py ingest-dir "path/to/documents" --force --enable-ingest-llm --generate-project-summaries`
 
 - Query semantic memory:
   - `python cli.py query "What were the recommendations for Unit 1 piping?" --client "Client A"`
@@ -69,6 +83,11 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
     - `python cli.py delete-client "Client Name"`
   - Merge duplicate clients (for case variants or alias cleanup):
     - `python cli.py merge-client "Source Client" "Target Client"`
+  - Detect and merge only very high-confidence duplicate clients:
+    - Preview only: `python cli.py cleanup-merge-clients --dry-run --min-confidence 0.95`
+    - Apply merges: `python cli.py cleanup-merge-clients --min-confidence 0.95`
+  - Reset the database (with backup by default):
+    - `python cli.py reset-db --backup`
   - Delete a specific node:
     - `python cli.py delete-node "Client Name" "Projects/Project A/Workscope"`
   - Delete a report/document path and its timeline/vector/version entries:
@@ -77,6 +96,12 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
 - Find and clean suspicious one-document clients (client name equals only document name):
   - `python cli.py list-suspicious-clients`
   - `python cli.py cleanup-bad-clients`
+
+- Post-ingest automatic cleanup:
+  - After `ingest-file` and `ingest-dir`, the CLI now runs a high-confidence duplicate-client merge cleanup automatically.
+  - This behavior is enabled by default and can be controlled with:
+    - `--auto-merge-cleanup / --no-auto-merge-cleanup`
+    - `--merge-confidence <threshold>`
 
 - Run automated smoke test:
   - `python scripts/smoke_test.py`

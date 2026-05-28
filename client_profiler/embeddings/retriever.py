@@ -45,7 +45,13 @@ class VectorRetriever:
             score = float(np.dot(query, emb) / denom)
             scored.append((score, row))
 
-        scored.sort(key=lambda x: x[0], reverse=True)
+        scored.sort(
+            key=lambda item: (
+                -item[0],
+                str(item[1].get("source_document") or ""),
+                str(item[1].get("chunk_text") or ""),
+            )
+        )
         scored = scored[:candidate_limit]
 
         query_tokens = self._tokenize(query_text or "")
@@ -69,7 +75,13 @@ class VectorRetriever:
                 }
             )
 
-        ranked.sort(key=lambda item: item["score"], reverse=True)
+        ranked.sort(
+            key=lambda item: (
+                -float(item.get("score") or 0.0),
+                str(item.get("source_document") or ""),
+                str(item.get("chunk_text") or ""),
+            )
+        )
         if use_mmr:
             ranked = self._mmr_select(ranked, top_k=top_k, mmr_lambda=mmr_lambda)
         else:
