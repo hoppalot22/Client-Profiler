@@ -235,6 +235,22 @@
 {% block extra_scripts %}
 <script>
 (function () {
+  function parseApiResponse(resp) {
+    return resp.text().then(function (raw) {
+      var data = {};
+      if (raw) {
+        try {
+          data = JSON.parse(raw);
+        } catch (err) {
+          data = {
+            detail: raw.slice(0, 300) || (err && err.message) || 'Server returned a non-JSON response.'
+          };
+        }
+      }
+      return { ok: resp.ok, data: data };
+    });
+  }
+
   function formatUpdatedAt(value) {
     if (!value) return '';
     const dt = new Date(value);
@@ -287,8 +303,18 @@
                 + '/project/' + encodeURIComponent(projectKey)
                 + '/summarise';
 
-      fetch(url, { method: 'POST' })
-        .then(function (resp) { return resp.json().then(function (data) { return { ok: resp.ok, data: data }; }); })
+      var ensureReady = window.cpEnsureSelectedModelReady
+        ? window.cpEnsureSelectedModelReady()
+        : Promise.resolve(true);
+
+      ensureReady
+        .then(function (ready) {
+          if (!ready) {
+            throw new Error('Selected model is not available.');
+          }
+          return fetch(url, { method: 'POST' });
+        })
+        .then(parseApiResponse)
         .then(function (res) {
           if (!res.ok) throw new Error(res.data.detail || 'Server error');
           if (summaryEl) summaryEl.textContent = res.data.summary;
@@ -358,8 +384,18 @@
                 + '/field/' + encodeURIComponent(fieldKey)
                 + '/generate';
 
-      fetch(url, { method: 'POST' })
-        .then(function (resp) { return resp.json().then(function (data) { return { ok: resp.ok, data: data }; }); })
+      var ensureReady = window.cpEnsureSelectedModelReady
+        ? window.cpEnsureSelectedModelReady()
+        : Promise.resolve(true);
+
+      ensureReady
+        .then(function (ready) {
+          if (!ready) {
+            throw new Error('Selected model is not available.');
+          }
+          return fetch(url, { method: 'POST' });
+        })
+        .then(parseApiResponse)
         .then(function (res) {
           if (!res.ok) throw new Error(res.data.detail || 'Server error');
           if (valueEl) valueEl.textContent = res.data.value || '';

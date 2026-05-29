@@ -1,0 +1,156 @@
+{
+  "generated_at": "2026-05-29T05:41:29.988678+00:00",
+  "event_log": "data\\diagnostics\\full_with_finance_events.jsonl",
+  "event_summary": {
+    "event_counts": {
+      "directory_scanned": 1,
+      "file_started": 143,
+      "file_read": 133,
+      "classification_completed": 133,
+      "extraction_completed": 133,
+      "project_resolution_completed": 133,
+      "document_record_saved": 133,
+      "report_version_saved": 133,
+      "profile_updated": 132,
+      "chunk_embedding_started": 133,
+      "chunk_embedded": 264,
+      "chunk_embedding_completed": 133,
+      "file_completed": 133,
+      "file_unsupported": 10,
+      "project_reconciliation_started": 5,
+      "project_reconciliation_completed": 5,
+      "merge_cleanup_started": 1,
+      "merge_cleanup_completed": 1,
+      "directory_completed": 1
+    },
+    "file_status_counts": {
+      "reingested": 133
+    },
+    "file_duration_seconds": {
+      "count": 133,
+      "avg": 0.187,
+      "p50": 0.157,
+      "p95": 0.393,
+      "slowest": [
+        {
+          "path": "sample_docs\\report_v2_04_2019_northriver_energy_civil_structural_condition_survey.pdf",
+          "seconds": 0.466
+        },
+        {
+          "path": "sample_docs\\report_v2_01_2016_northriver_energy_piping_integrity_assessment.pdf",
+          "seconds": 0.461
+        },
+        {
+          "path": "sample_docs\\report_v2_08_2023_bluemesa_utilities_civil_structural_condition_survey.html",
+          "seconds": 0.445
+        },
+        {
+          "path": "sample_docs\\report_v2_10_2025_northriver_energy_electrical_reliability_audit.pdf",
+          "seconds": 0.433
+        },
+        {
+          "path": "sample_docs\\report_v2_05_2020_bluemesa_utilities_piping_integrity_assessment.docx",
+          "seconds": 0.402
+        },
+        {
+          "path": "sample_docs\\report_v2_07_2022_northriver_energy_mechanical_overhaul_review.pdf",
+          "seconds": 0.395
+        },
+        {
+          "path": "sample_docs\\report_v2_09_2024_harborstone_manufacturing_piping_integrity_assessment.docx",
+          "seconds": 0.395
+        },
+        {
+          "path": "sample_docs\\report_v2_02_2017_bluemesa_utilities_electrical_reliability_audit.docx",
+          "seconds": 0.393
+        },
+        {
+          "path": "sample_docs\\report_v2_06_2021_harborstone_manufacturing_electrical_reliability_audit.html",
+          "seconds": 0.377
+        },
+        {
+          "path": "sample_docs\\report_v2_03_2018_harborstone_manufacturing_mechanical_overhaul_review.html",
+          "seconds": 0.362
+        }
+      ]
+    },
+    "errors": [],
+    "unsupported_files": [
+      {
+        "path": "sample_docs\\charts\\report_v2_01_2016_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.201189+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_02_2017_bluemesa_utilities_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.202191+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_03_2018_harborstone_manufacturing_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.202191+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_04_2019_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.203191+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_05_2020_bluemesa_utilities_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.204192+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_06_2021_harborstone_manufacturing_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.205193+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_07_2022_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.205193+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_08_2023_bluemesa_utilities_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.206195+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_09_2024_harborstone_manufacturing_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.206770+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_10_2025_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:41:02.206770+00:00"
+      }
+    ]
+  },
+  "db_quality": {
+    "db_found": true,
+    "db_path": "data\\profiler_full_with_finance.db",
+    "counts": {
+      "documents": 133,
+      "profiles": 157,
+      "timeline": 192,
+      "vectors": 264,
+      "null_client_docs": 1,
+      "report_docs_missing_date": 0
+    },
+    "document_kind_counts": {
+      "quote": 42,
+      "report": 23,
+      "purchase_order": 21,
+      "email_chain": 20,
+      "access_request": 20,
+      "invoice": 3,
+      "expense_report": 2,
+      "unknown": 1,
+      "timesheet": 1
+    },
+    "filename_kind_mismatches": [],
+    "client_name_canonical_collisions": []
+  }
+}

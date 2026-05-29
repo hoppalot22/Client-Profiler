@@ -349,7 +349,7 @@ class SqliteStorage:
         params: list[Any] = []
 
         if client_name:
-            where_clauses.append("client_name = ?")
+            where_clauses.append("LOWER(COALESCE(client_name, '')) = LOWER(?)")
             params.append(client_name)
 
         if source_documents:
@@ -408,6 +408,42 @@ class SqliteStorage:
         with self._connect() as conn:
             rows = conn.execute("SELECT DISTINCT client_name FROM profiles ORDER BY client_name").fetchall()
         return [r[0] for r in rows if r[0]]
+
+    def canonicalize_client_name(self, candidate: str) -> str:
+        name = str(candidate or "").strip()
+        if not name:
+            return ""
+
+        with self._connect() as conn:
+            profile_match = conn.execute(
+                """
+                SELECT client_name
+                FROM profiles
+                WHERE LOWER(client_name) = LOWER(?)
+                ORDER BY client_name ASC
+                LIMIT 1
+                """,
+                (name,),
+            ).fetchone()
+            if profile_match is not None and str(profile_match[0] or "").strip():
+                return str(profile_match[0]).strip()
+
+            doc_match = conn.execute(
+                """
+                SELECT json_extract(metadata_json, '$.client_name') AS client_name, COUNT(*) AS freq
+                FROM documents
+                WHERE TRIM(COALESCE(json_extract(metadata_json, '$.client_name'), '')) <> ''
+                  AND LOWER(TRIM(json_extract(metadata_json, '$.client_name'))) = LOWER(?)
+                GROUP BY client_name
+                ORDER BY freq DESC, client_name ASC
+                LIMIT 1
+                """,
+                (name,),
+            ).fetchone()
+
+        if doc_match is not None and str(doc_match[0] or "").strip():
+            return str(doc_match[0]).strip()
+        return name
 
     def list_client_documents(self, client_name: str) -> list[dict[str, Any]]:
         records = self.list_document_records()
@@ -535,6 +571,106 @@ class SqliteStorage:
             "timeline_events": int(timeline_events),
             "vector_chunks": int(vector_chunks),
         }
+
+    def _latest_document_records(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        by_source: set[str] = set()
+        for record in self.list_document_records():
+            source_path = str(record.get("source_path") or "").strip()
+            if not source_path or source_path in by_source:
+                continue
+            by_source.add(source_path)
+            rows.append(record)
+        return rows
+
+    def get_client_metrics(self, client_name: str) -> dict[str, Any]:
+        base_summary = self.get_client_summary(client_name)
+        records = self._latest_document_records()
+
+        client_records = []
+        for record in records:
+            metadata = record.get("metadata", {})
+            if not isinstance(metadata, dict):
+                continue
+            if str(metadata.get("client_name") or "").strip().lower() != client_name.strip().lower():
+                continue
+            client_records.append(record)
+
+        doc_kind_counts: dict[str, int] = {}
+        project_keys: set[str] = set()
+        report_dates: list[str] = []
+
+        revenue_total = 0.0
+        cost_total = 0.0
+        gross_profit_total = 0.0
+        doc_with_financials = 0
+        financial_docs = 0
+
+        for record in client_records:
+            metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+
+            kind = str(metadata.get("document_kind") or "unknown").strip() or "unknown"
+            doc_kind_counts[kind] = int(doc_kind_counts.get(kind, 0)) + 1
+
+            project_key = str(metadata.get("project_key") or "").strip()
+            if project_key:
+                project_keys.add(project_key)
+
+            report_date = str(metadata.get("report_date") or "").strip()
+            if report_date:
+                report_dates.append(report_date)
+
+            revenue = self._safe_float(metadata.get("revenue_amount"))
+            cost = self._safe_float(metadata.get("cost_amount"))
+            gross_profit = self._safe_float(metadata.get("gross_profit"))
+            financial_type = str(metadata.get("financial_type") or "").strip().lower()
+
+            if financial_type in {"revenue", "cost", "mixed"} or revenue != 0.0 or cost != 0.0:
+                financial_docs += 1
+
+            if revenue != 0.0 or cost != 0.0 or gross_profit != 0.0:
+                doc_with_financials += 1
+                revenue_total += revenue
+                cost_total += cost
+                if gross_profit != 0.0:
+                    gross_profit_total += gross_profit
+                else:
+                    gross_profit_total += revenue - cost
+
+        margin_pct = (gross_profit_total / revenue_total * 100.0) if revenue_total > 0 else 0.0
+        avg_doc_profit = gross_profit_total / max(1, doc_with_financials)
+
+        earliest_report_date = min(report_dates) if report_dates else ""
+        latest_report_date = max(report_dates) if report_dates else ""
+
+        return {
+            **base_summary,
+            "documents": len(client_records),
+            "project_count": len(project_keys),
+            "document_kind_counts": doc_kind_counts,
+            "financial_documents": int(financial_docs),
+            "documents_with_financials": int(doc_with_financials),
+            "revenue_total": round(revenue_total, 2),
+            "cost_total": round(cost_total, 2),
+            "gross_profit_total": round(gross_profit_total, 2),
+            "gross_margin_pct": round(margin_pct, 2),
+            "avg_profit_per_financial_doc": round(avg_doc_profit, 2),
+            "earliest_report_date": earliest_report_date,
+            "latest_report_date": latest_report_date,
+        }
+
+    def _safe_float(self, value: Any) -> float:
+        if value is None:
+            return 0.0
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value).strip().replace(",", "")
+        if not text:
+            return 0.0
+        try:
+            return float(text)
+        except ValueError:
+            return 0.0
 
     def list_document_records(self) -> list[dict[str, Any]]:
         with self._connect() as conn:

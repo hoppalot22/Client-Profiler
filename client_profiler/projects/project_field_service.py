@@ -177,13 +177,58 @@ class ProjectFieldService:
             "known_fields_count": len(compact_fields.split(";")) if compact_fields != "none" else 0,
         }
 
-        result = self.llm.extract_structured(prompt)
+        attempts = 0
+        timeout_before = int(getattr(self.llm, "timeout", 60) or 60)
+        timeout_for_field = max(timeout_before, 180)
+        if hasattr(self.llm, "timeout"):
+            self.llm.timeout = timeout_for_field
+        try:
+            result: dict[str, Any] | Any = {}
+            for attempt in range(2):
+                attempts = attempt + 1
+                result = self.llm.extract_structured(prompt)
+                if isinstance(result, dict) and result:
+                    break
+                code = self._llm_error_code()
+                if attempt == 0 and code in {"request_timed_out", "request_error", "no_response", "empty_model_response"}:
+                    continue
+                break
+        finally:
+            if hasattr(self.llm, "timeout"):
+                self.llm.timeout = timeout_before
+
         if not isinstance(result, dict) or not result:
             code = self._llm_error_code()
+            if self._is_recoverable_llm_error(code):
+                fallback_stored = self.storage.upsert_project_key_field(
+                    client_name=client_name,
+                    project_key=project_key,
+                    project_name=project_name,
+                    field_key=field_key,
+                    value=ABSENT_VALUE,
+                    status="absent",
+                    evidence=f"fallback_due_to_{code}",
+                    method="fallback",
+                )
+                self._refresh_project_fields_embedding(client_name, project_key, project_name)
+                self._write_debug_log(
+                    {
+                        **debug_payload,
+                        "ok": True,
+                        "status": "fallback_absent",
+                        "attempts": attempts,
+                        "timeout_seconds": timeout_for_field,
+                        "error_code": code,
+                        "error_message": self._llm_error_message(code),
+                    }
+                )
+                return {"ok": True, **fallback_stored}
             self._write_debug_log(
                 {
                     **debug_payload,
                     "ok": False,
+                    "attempts": attempts,
+                    "timeout_seconds": timeout_for_field,
                     "error_code": code,
                     "error_message": self._llm_error_message(code),
                 }
@@ -205,7 +250,16 @@ class ProjectFieldService:
                 method="ai",
             )
             self._refresh_project_fields_embedding(client_name, project_key, project_name)
-            self._write_debug_log({**debug_payload, "ok": True, "status": "absent", "value_words": 0})
+            self._write_debug_log(
+                {
+                    **debug_payload,
+                    "ok": True,
+                    "status": "absent",
+                    "value_words": 0,
+                    "attempts": attempts,
+                    "timeout_seconds": timeout_for_field,
+                }
+            )
             return {"ok": True, **stored}
 
         stored = self.storage.upsert_project_key_field(
@@ -225,6 +279,8 @@ class ProjectFieldService:
                 "ok": True,
                 "status": "filled",
                 "value_words": len(value.split()),
+                "attempts": attempts,
+                "timeout_seconds": timeout_for_field,
             }
         )
         return {"ok": True, **stored}
@@ -697,6 +753,7 @@ class ProjectFieldService:
         return raw or "no_response"
 
     def _llm_error_message(self, code: str) -> str:
+        detail = str(getattr(self.llm, "last_error_detail", "") or "").strip()
         mapping = {
             "request_timed_out": "Request to local model timed out.",
             "empty_model_response": "Model returned an empty response.",
@@ -706,8 +763,17 @@ class ProjectFieldService:
             "no_response": "Model returned no response.",
         }
         if code.startswith("http_error_"):
-            return f"Local model service returned HTTP error ({code.replace('http_error_', '')})."
-        return mapping.get(code, f"Model request failed ({code}).")
+            base = f"Local model service returned HTTP error ({code.replace('http_error_', '')})."
+            return f"{base} Detail: {detail}" if detail else base
+        base = mapping.get(code, f"Model request failed ({code}).")
+        return f"{base} Detail: {detail}" if detail else base
+
+    def _is_recoverable_llm_error(self, code: str) -> bool:
+        if code in {"request_timed_out", "request_error", "empty_model_response", "no_response"}:
+            return True
+        if code.startswith("http_error_"):
+            return True
+        return False
 
     def _ensure_default_key_fields_doc(self) -> None:
         self.key_fields_path.parent.mkdir(parents=True, exist_ok=True)

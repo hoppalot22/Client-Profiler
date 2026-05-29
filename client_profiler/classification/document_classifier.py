@@ -18,8 +18,17 @@ class DocumentClassifier:
         "quote": [r"\bquote\b", r"\bquotation\b", r"\bestimate\b"],
         "purchase_order": [r"\bpurchase\s+order\b", r"\bpo\s*#?\b"],
         "access_request": [r"\baccess\s+request\b", r"\bpermit\s+to\s+work\b"],
-        "email_chain": [r"(?m)^\s*-?\s*from:", r"(?m)^\s*-?\s*to:", r"(?m)^\s*-?\s*subject:", r"(?m)^\s*-?\s*sent:"],
+        "email_chain": [
+            r"(?m)^\s*-?\s*from:",
+            r"(?m)^\s*-?\s*to:",
+            r"(?m)^\s*-?\s*subject:",
+            r"(?m)^\s*-?\s*sent:",
+            r"\bemail\s+chain\b",
+            r"\bfrom:\s*\S+@\S+",
+            r"\bsubject:\b",
+        ],
         "invoice": [r"\binvoice\b", r"\bamount\s+due\b"],
+        "expense_report": [r"\bexpense\s+report\b", r"\bexpense\s+summary\b", r"\btravel\s+expense\b", r"\bcost\s+breakdown\b"],
         "timesheet": [r"\btimesheet\b", r"\bhours\s+worked\b"],
     }
 
@@ -33,17 +42,48 @@ class DocumentClassifier:
         r"\bquote\b",
         r"\bpurchase\s+order\b",
         r"\baccess\s+request\b",
+        r"\bcost\b",
+        r"\bexpense\b",
         r"\bshutdown\b",
         r"\boutage\b",
     ]
 
-    def classify(self, text: str) -> DocumentClassification:
-        lowered = text.lower()
+    DOCUMENT_KIND_KEYWORDS = {
+        "quote": ["quote", "quotation", "estimate"],
+        "purchase_order": ["purchase_order", "purchase-order", "po_", "po-"],
+        "access_request": ["access_request", "access-request", "permit"],
+        "email_chain": ["email_chain", "email-chain", "email"],
+        "invoice": ["invoice", "inv_"],
+        "expense_report": ["expense", "cost", "budget"],
+        "timesheet": ["timesheet"],
+    }
 
-        non_report_score = 0
+    def classify(self, text: str, source_path: str | None = None) -> DocumentClassification:
+        lowered = text.lower()
+        path_text = str(source_path or "").lower()
+
+        non_report_score = 0.0
         non_report_kind = None
         for kind, patterns in self.NON_REPORT_PATTERNS.items():
-            score = sum(1 for p in patterns if re.search(p, lowered))
+            score = float(sum(1 for p in patterns if re.search(p, lowered)))
+            # Fallback hint from filename/path when textual cues are sparse.
+            if path_text and any(token in path_text for token in self.DOCUMENT_KIND_KEYWORDS.get(kind, [])):
+                score += 0.75
+            if kind == "email_chain" and "email_chain" in path_text:
+                score += 2.0
+
+            # Access request and email chains were frequently misrouted as purchase orders.
+            if kind == "access_request" and re.search(r"\b(approval|workers?|visitor|permit)\b", lowered):
+                score += 0.75
+            if kind == "email_chain":
+                email_marker_count = sum(
+                    1 for p in self.NON_REPORT_PATTERNS["email_chain"] if re.search(p, lowered)
+                )
+                if email_marker_count >= 2:
+                    score += 1.0
+                if email_marker_count >= 3:
+                    score += 0.75
+
             if score > non_report_score:
                 non_report_score = score
                 non_report_kind = kind
@@ -53,9 +93,9 @@ class DocumentClassifier:
 
         is_client_related = client_score >= 2 or re.search(r"\bclient\s*(?:name)?\b", lowered) is not None
 
-        if non_report_score > 0 and non_report_score >= report_score and non_report_kind:
+        if non_report_score > 0 and non_report_score >= float(report_score) and non_report_kind:
             kind = non_report_kind
-            confidence = min(0.95, 0.4 + 0.15 * non_report_score)
+            confidence = min(0.97, 0.42 + 0.13 * non_report_score)
             rationale = f"Detected non-report cues for {non_report_kind}."
         elif report_score > 0:
             kind = "report"

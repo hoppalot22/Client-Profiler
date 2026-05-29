@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 
 from client_profiler.config import ProfilerConfig
@@ -23,13 +24,69 @@ class ProfileExtractor:
     def extract(self, text: str, classification: DocumentClassification) -> ExtractedProfileData:
         llm_text = text[: self.config.max_text_chars_for_llm]
         regex_text = text[: self.config.max_text_chars_for_regex]
+        regex_result = self._extract_with_regex(regex_text, classification)
 
-        if self.llm:
+        # Small local models are more reliable when reserved for low-confidence cases.
+        should_use_llm = (
+            self.llm is not None
+            and (
+                classification.document_kind == "unknown"
+                or classification.confidence < 0.8
+                or classification.document_kind == "report"
+            )
+        )
+        if should_use_llm:
             llm_data = self._extract_with_llm(llm_text, classification)
             if llm_data:
-                return self._from_dict(llm_data, classification)
+                llm_result = self._from_dict(llm_data, classification)
+                return self._merge_with_regex_fallback(llm_result, regex_result)
 
-        return self._extract_with_regex(regex_text, classification)
+        return regex_result
+
+    def _merge_with_regex_fallback(
+        self,
+        llm_result: ExtractedProfileData,
+        regex_result: ExtractedProfileData,
+    ) -> ExtractedProfileData:
+        if not llm_result.client_name and regex_result.client_name:
+            llm_result.client_name = regex_result.client_name
+
+        if not llm_result.events and regex_result.events:
+            llm_result.events = regex_result.events
+
+        if not llm_result.insight.key_findings and regex_result.insight.key_findings:
+            llm_result.insight.key_findings = regex_result.insight.key_findings
+        if not llm_result.insight.recommendations and regex_result.insight.recommendations:
+            llm_result.insight.recommendations = regex_result.insight.recommendations
+        if not llm_result.insight.contacts and regex_result.insight.contacts:
+            llm_result.insight.contacts = regex_result.insight.contacts
+        if not llm_result.insight.authors and regex_result.insight.authors:
+            llm_result.insight.authors = regex_result.insight.authors
+        if not llm_result.insight.report_type and regex_result.insight.report_type:
+            llm_result.insight.report_type = regex_result.insight.report_type
+
+        llm_project = llm_result.project_context
+        regex_project = regex_result.project_context
+        if not llm_project.project_name and regex_project.project_name:
+            llm_project.project_name = regex_project.project_name
+        if not llm_project.project_code and regex_project.project_code:
+            llm_project.project_code = regex_project.project_code
+        if not llm_project.quote_number and regex_project.quote_number:
+            llm_project.quote_number = regex_project.quote_number
+        if not llm_project.purchase_order_number and regex_project.purchase_order_number:
+            llm_project.purchase_order_number = regex_project.purchase_order_number
+        if not llm_project.access_reference and regex_project.access_reference:
+            llm_project.access_reference = regex_project.access_reference
+        if not llm_project.related_references and regex_project.related_references:
+            llm_project.related_references = regex_project.related_references
+
+        if not llm_result.additional_fields.get("report_date") and regex_result.additional_fields.get("report_date"):
+            llm_result.additional_fields["report_date"] = regex_result.additional_fields.get("report_date")
+
+        if not llm_result.hierarchy_paths and regex_result.hierarchy_paths:
+            llm_result.hierarchy_paths = regex_result.hierarchy_paths
+
+        return llm_result
 
     def _extract_with_llm(self, text: str, classification: DocumentClassification) -> dict[str, Any]:
         llm = self.llm
@@ -93,7 +150,8 @@ class ProfileExtractor:
             additional_fields = {}
         report_date = data.get("report_date") or additional_fields.get("report_date")
         if report_date:
-            additional_fields["report_date"] = str(report_date)
+            normalized = _normalize_date(str(report_date))
+            additional_fields["report_date"] = normalized or str(report_date)
 
         return ExtractedProfileData(
             client_name=_clean_client_name(data.get("client_name")),
@@ -130,10 +188,25 @@ class ProfileExtractor:
                 r"(?im)^\s*report\s*date\s*[:\-]\s*(\d{4}-\d{2}-\d{2})",
                 r"(?im)^\s*date\s*[:\-]\s*(\d{4}-\d{2}-\d{2})",
                 r"(?im)^\s*date\s*[:\-]\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+                r"(?im)^\s*report\s*date\s*[:\-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})",
+                r"(?im)^\s*date\s*[:\-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})",
+                r"(?im)^\s*report\s*date\s*[:\-]\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})",
+                r"(?im)^\s*date\s*[:\-]\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})",
             ],
         )
+        report_date = _normalize_date(report_date)
 
-        date_candidates = _all_matches(text, [r"\b(\d{4}-\d{2}-\d{2})\b", r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b"])
+        raw_date_candidates = _all_matches(
+            text,
+            [
+                r"\b(\d{4}-\d{2}-\d{2})\b",
+                r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b",
+                r"\b([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})\b",
+                r"\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b",
+            ],
+        )
+        date_candidates = [d for d in (_normalize_date(value) for value in raw_date_candidates) if d]
+        date_candidates = list(dict.fromkeys(date_candidates))
         if report_date is None and date_candidates:
             report_date = date_candidates[0]
         events = [
@@ -279,6 +352,35 @@ def _collect_references(text: str) -> list[str]:
                 refs.append(value)
                 seen.add(value)
     return refs
+
+
+def _normalize_date(value: Any) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        return raw
+
+    formats = [
+        "%m/%d/%Y",
+        "%m/%d/%y",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%B %d, %Y",
+        "%b %d, %Y",
+        "%d %B %Y",
+        "%d %b %Y",
+    ]
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(raw, fmt)
+            return parsed.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
 
 
 def _clean_client_name(value: Any) -> str | None:

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import logging
 import re
 from datetime import date, datetime
 from mimetypes import guess_type
 from pathlib import Path
-from typing import Any
-from urllib.parse import quote
+from typing import Any, Iterator
+from urllib.parse import quote, unquote
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import Body, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.responses import FileResponse
 from fastapi.responses import RedirectResponse
@@ -51,6 +52,30 @@ PROJECT_TOKEN_STOPWORDS = {
     "work",
 }
 
+SMALL_MODEL_RECOMMENDATIONS: list[dict[str, str]] = [
+    {
+        "name": "qwen2.5:1.5b",
+        "label": "Qwen 2.5 1.5B (recommended)",
+        "size": "~1.0 GB",
+    },
+    {
+        "name": "qwen2.5:0.5b",
+        "label": "Qwen 2.5 0.5B",
+        "size": "~0.4 GB",
+    },
+    {
+        "name": "qwen3:0.6b",
+        "label": "Qwen 3 0.6B",
+        "size": "~0.5 GB",
+    },
+]
+
+MODEL_DOWNLOAD_ALIASES: dict[str, str] = {
+    "qwen3:0.5b": "qwen3:0.6b",
+}
+
+LLM_SELECTION_COOKIE = "cp_llm_model"
+
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +101,123 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             "active_model": active_model,
             "fallback_active": bool(active_model and configured_model and active_model != configured_model),
         }
+
+    def _normalize_model_name(model_name: str, installed_models: list[str] | None = None) -> str:
+        raw = unquote(str(model_name or "").strip())
+        if not raw:
+            return ""
+
+        alias = MODEL_DOWNLOAD_ALIASES.get(raw.lower())
+        if alias:
+            raw = alias
+
+        known_names = [row["name"] for row in SMALL_MODEL_RECOMMENDATIONS]
+        if installed_models:
+            known_names.extend(installed_models)
+        for name in known_names:
+            if str(name).strip().lower() == raw.lower():
+                return str(name).strip()
+        return raw
+
+    def _selected_model_for_request(request: Request | None = None, installed_models: list[str] | None = None) -> str:
+        cookie_value = str(request.cookies.get(LLM_SELECTION_COOKIE, "") or "").strip() if request is not None else ""
+        header_value = str(request.headers.get("x-cp-llm-model", "") or "").strip() if request is not None else ""
+        preferred = header_value or cookie_value or str(config.llm_model or "")
+        return _normalize_model_name(preferred, installed_models)
+
+    def _model_options(installed_models: list[str], selected_model: str) -> list[dict[str, str]]:
+        options: list[dict[str, str]] = []
+        seen: set[str] = set()
+        recommendation_by_name = {row["name"].strip().lower(): row for row in SMALL_MODEL_RECOMMENDATIONS}
+
+        def push(name: str, *, label: str = "", size: str = "") -> None:
+            clean = str(name or "").strip()
+            if not clean or clean.lower() in seen:
+                return
+            seen.add(clean.lower())
+            options.append(
+                {
+                    "name": clean,
+                    "label": label or clean,
+                    "size": size,
+                    "available": "true" if any(item.lower() == clean.lower() for item in installed_models) else "false",
+                }
+            )
+
+        for row in SMALL_MODEL_RECOMMENDATIONS:
+            push(row["name"], label=row.get("label") or row["name"], size=row.get("size") or "")
+        for name in installed_models:
+            rec = recommendation_by_name.get(str(name).strip().lower(), {})
+            push(name, label=str(rec.get("label") or name), size=str(rec.get("size") or ""))
+        if selected_model:
+            rec = recommendation_by_name.get(selected_model.lower(), {})
+            push(selected_model, label=str(rec.get("label") or selected_model), size=str(rec.get("size") or ""))
+        return options
+
+    def _llm_model_status_payload(request: Request | None = None) -> dict[str, Any]:
+        configured_model = str(config.llm_model or "").strip()
+        recommendations = [dict(row) for row in SMALL_MODEL_RECOMMENDATIONS]
+
+        if llm is None:
+            return {
+                "enabled": False,
+                "reachable": False,
+                "configured_model": configured_model,
+                "selected_model": configured_model,
+                "installed_models": [],
+                "configured_installed": False,
+                "selected_installed": False,
+                "needs_download_prompt": False,
+                "recommended_models": recommendations,
+                "model_options": recommendations,
+                "message": "LLM provider is not configured.",
+            }
+
+        installed_models = llm.list_models()
+        selected_model = _selected_model_for_request(request, installed_models) or configured_model
+        reachable = bool(installed_models) or llm.last_error is None
+        configured_installed = any(name.lower() == configured_model.lower() for name in installed_models) if configured_model else False
+        selected_installed = any(name.lower() == selected_model.lower() for name in installed_models) if selected_model else False
+        needs_prompt = bool(reachable and selected_model and (not selected_installed))
+
+        if needs_prompt:
+            message = (
+                f"Ollama is reachable, but selected model '{selected_model}' is not installed. "
+                "Pick a small model below and download it."
+            )
+        elif not reachable:
+            message = "Could not reach local Ollama service."
+        else:
+            message = f"Selected model '{selected_model}' is ready."
+
+        return {
+            "enabled": True,
+            "reachable": reachable,
+            "configured_model": configured_model,
+            "selected_model": selected_model,
+            "installed_models": installed_models,
+            "configured_installed": configured_installed,
+            "selected_installed": selected_installed,
+            "needs_download_prompt": needs_prompt,
+            "recommended_models": recommendations,
+            "model_options": _model_options(installed_models, selected_model),
+            "message": message,
+            "last_error": str(getattr(llm, "last_error", "") or ""),
+        }
+
+    @contextmanager
+    def _with_request_model(request: Request) -> Iterator[str]:
+        if llm is None:
+            yield ""
+            return
+
+        original_model = str(llm.model or "")
+        selected_model = _selected_model_for_request(request) or original_model
+        llm.model = selected_model
+        try:
+            yield selected_model
+        finally:
+            llm.model = original_model
 
     templates.env.globals["llm_status"] = _llm_status
 
@@ -380,12 +522,13 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found.")
 
-        generated = summary_service.generate_and_store(
-            client_name=client_name,
-            project_key=project_key,
-            project_name=project["project_name"],
-            documents=project["documents"],
-        )
+        with _with_request_model(request):
+            generated = summary_service.generate_and_store(
+                client_name=client_name,
+                project_key=project_key,
+                project_name=project["project_name"],
+                documents=project["documents"],
+            )
         if not generated.get("ok"):
             reason = str(generated.get("error_message") or "Unknown error.")
             code = str(generated.get("error_code") or "unknown_error")
@@ -452,7 +595,7 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         }
 
     @app.post("/api/client/{client_name}/project/{project_key}/field/{field_key}/generate")
-    def project_generate_field(client_name: str, project_key: str, field_key: str) -> dict:
+    def project_generate_field(client_name: str, project_key: str, field_key: str, request: Request) -> dict:
         if llm is None:
             raise HTTPException(status_code=503, detail="LLM provider is not configured.")
 
@@ -489,15 +632,16 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             }
             for row in project.get("key_fields", [])
         }
-        result = field_service.generate_field(
-            client_name=client_name,
-            project_key=project_key,
-            project_name=project["project_name"],
-            field_key=field_key,
-            field_prompt=field_def["prompt"],
-            documents=project["documents"],
-            existing_fields=existing,
-        )
+        with _with_request_model(request):
+            result = field_service.generate_field(
+                client_name=client_name,
+                project_key=project_key,
+                project_name=project["project_name"],
+                field_key=field_key,
+                field_prompt=field_def["prompt"],
+                documents=project["documents"],
+                existing_fields=existing,
+            )
         if not result.get("ok"):
             reason = str(result.get("error_message") or "Unknown error.")
             code = str(result.get("error_code") or "unknown_error")
@@ -524,6 +668,34 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             "updated_at": result.get("updated_at") or "",
             "method": result.get("method") or "ai",
             "error_message": "",
+        }
+
+    @app.get("/api/llm/model-status")
+    def api_llm_model_status(request: Request) -> dict[str, Any]:
+        return _llm_model_status_payload(request)
+
+    @app.post("/api/llm/download-model")
+    def api_llm_download_model(request: Request, payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+        if llm is None:
+            raise HTTPException(status_code=503, detail="LLM provider is not configured.")
+
+        requested_model = str(payload.get("model") or _selected_model_for_request(request) or "").strip()
+        resolved_model = MODEL_DOWNLOAD_ALIASES.get(requested_model.lower(), requested_model)
+        allowed = {row["name"].strip().lower() for row in SMALL_MODEL_RECOMMENDATIONS}
+        if resolved_model.lower() not in allowed:
+            raise HTTPException(status_code=400, detail="Unsupported model selection.")
+
+        ok, message = llm.pull_model(resolved_model)
+        status_payload = _llm_model_status_payload(request)
+        if not ok:
+            raise HTTPException(status_code=502, detail=message)
+
+        return {
+            "ok": True,
+            "message": message,
+            "requested_model": requested_model,
+            "model": resolved_model,
+            "status": status_payload,
         }
 
     @app.get("/document", response_model=None)
@@ -563,6 +735,7 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
             {
                 "name": client,
                 "summary": storage.get_client_summary(client),
+                "metrics": storage.get_client_metrics(client),
             }
             for client in storage.list_clients()
         ]
@@ -577,6 +750,7 @@ def create_app(config: ProfilerConfig | None = None) -> FastAPI:
         return {
             "client_name": client_name,
             "summary": storage.get_client_summary(client_name),
+            "metrics": storage.get_client_metrics(client_name),
             "tree": _build_tree(nodes),
             "timeline": storage.list_timeline(client_name=client_name, limit=300),
             "nodes": nodes,

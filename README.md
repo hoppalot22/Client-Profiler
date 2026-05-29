@@ -53,6 +53,8 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
 
 - Ingest one file:
   - `python cli.py ingest-file "path/to/document.pdf"`
+  - Write structured ingest events to JSONL for diagnostics:
+    - `python cli.py ingest-file "path/to/document.pdf" --event-log data/diagnostics/ingest_events.jsonl`
   - Force re-ingest (captures updates/drafts becoming final):
     - `python cli.py ingest-file "path/to/document.pdf" --force`
   - Disable live terminal status/progress output:
@@ -62,6 +64,8 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
 
 - Ingest folder recursively:
   - `python cli.py ingest-dir "path/to/documents"`
+  - Write structured ingest events to JSONL for diagnostics:
+    - `python cli.py ingest-dir "path/to/documents" --event-log data/diagnostics/ingest_events.jsonl`
   - Force re-ingest all files:
     - `python cli.py ingest-dir "path/to/documents" --force`
   - Disable live terminal status/progress output:
@@ -74,6 +78,10 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
 
 - List profiled clients:
   - `python cli.py list-clients`
+
+- Show per-client operational and financial metrics:
+  - `python cli.py client-metrics`
+  - Single client: `python cli.py client-metrics --client "NorthRiver Energy"`
 
 - Manually set report date when extraction is missing:
   - `python cli.py set-report-date "path/to/document.docx" 2025-10-15`
@@ -106,6 +114,9 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
 - Run automated smoke test:
   - `python scripts/smoke_test.py`
 
+- Analyze ingest logs and DB quality anomalies:
+  - `python scripts/analyze_ingest_log.py --event-log data/diagnostics/ingest_events.jsonl --db data/profiler.db --output data/diagnostics/ingest_report.json`
+
 - Evaluate retrieval quality on the labeled benchmark set:
   - `python scripts/evaluate_retrieval_quality.py --top-k 8 --show-failures`
 
@@ -113,6 +124,14 @@ If Ollama is unavailable, extraction falls back to regex heuristics.
   - `python scripts/generate_project_logistics_docs.py`
   - Generate and ingest into the active database:
     - `python scripts/generate_project_logistics_docs.py --ingest`
+
+- Generate varied fictional financial/expense documents and optional ingest:
+  - `python scripts/generate_financial_variant_docs.py`
+  - Generate and ingest into a dedicated DB:
+    - `python scripts/generate_financial_variant_docs.py --ingest --force --db data/profiler_financial_variants.db`
+
+- Evaluate financial metrics against expected totals from generated fixtures:
+  - `python scripts/evaluate_financial_metrics.py --db data/profiler_financial_variants.db --expected data/financial_variants_expected.json`
 
 ## Web UI (FastAPI)
 
@@ -163,6 +182,8 @@ This starter is designed for extension:
   - references (quote/PO/access/project code) resolve uniquely to one known client,
   - or the extracted name already matches a known client.
 - Names that look like document filenames/folder names are rejected to prevent accidental pseudo-clients.
+- Ingest now normalizes case variants to an existing canonical client name when one already exists in storage.
+- If client markers are missing, ingest can infer client from report-folder naming patterns (for example `report_01_2016_northriver_energy_...`) and then applies confidence checks.
 
 ## Deduplication behavior
 
@@ -171,6 +192,11 @@ This starter is designed for extension:
 - With `--force`, files are re-ingested even if content hash matches, enabling update workflows.
 - When node content changes on re-ingest, prior node facts are archived and shown in UI as superseded history.
 - Re-ingest also writes version snapshots for reports, so users can inspect what changed between versions.
+
+## Unsupported files
+
+- Unsupported file types are skipped with `status: "skipped_unsupported"` during directory ingest.
+- They are also emitted as `file_unsupported` events in optional ingest event logs, so diagnostics can separate skipped files from true ingest failures.
 
 ## Data model idea for tree profiles
 

@@ -25,16 +25,20 @@
         <a class="inline-link" href="/timeline">View Timeline</a>
         <a class="inline-link" href="/reports">Report Lookup</a>
         <a class="inline-link" href="/admin/maintenance">Maintenance</a>
-        <span
-          class="llm-badge{% if llm.fallback_active %} is-fallback{% endif %}"
-          title="Provider: {{ llm.provider }} | URL: {{ llm.base_url }} | Configured: {{ llm.configured_model }}"
-        >
-          {% if llm.enabled %}
-            LLM {{ llm.active_model or llm.configured_model }}
-            {% if llm.fallback_active %}(fallback from {{ llm.configured_model }}){% endif %}
-          {% else %}
-            LLM disabled
-          {% endif %}
+        <span class="llm-control-cluster" data-llm-selector data-configured-model="{{ llm.configured_model | e }}">
+          <label class="llm-select-label" for="llm-model-selector">Model</label>
+          <select id="llm-model-selector" class="llm-model-selector" aria-label="Select active LLM model"></select>
+          <span
+            id="llm-badge"
+            class="llm-badge"
+            title="Provider: {{ llm.provider }} | URL: {{ llm.base_url }} | Configured: {{ llm.configured_model }}"
+          >
+            {% if llm.enabled %}
+              LLM {{ llm.active_model or llm.configured_model }}
+            {% else %}
+              LLM disabled
+            {% endif %}
+          </span>
         </span>
         <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode</button>
       </div>
@@ -42,5 +46,199 @@
     <main class="page">{% block content %}{% endblock %}</main>
     {% block extra_scripts %}{% endblock %}
     <script src="{{ url_for('static', path='/theme_toggle.js') }}"></script>
+    <script>
+      (function () {
+        var COOKIE_NAME = 'cp_llm_model';
+        var shell = document.querySelector('[data-llm-selector]');
+        if (!shell) return;
+
+        var selectEl = document.getElementById('llm-model-selector');
+        var badgeEl = document.getElementById('llm-badge');
+        var configuredModel = String(shell.dataset.configuredModel || '').trim();
+        var state = null;
+
+        function getCookie(name) {
+          var encoded = name + '=';
+          var parts = document.cookie.split(';');
+          for (var i = 0; i < parts.length; i += 1) {
+            var item = parts[i].trim();
+            if (item.indexOf(encoded) === 0) {
+              return decodeURIComponent(item.slice(encoded.length));
+            }
+          }
+          return '';
+        }
+
+        function setCookie(name, value) {
+          document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
+        }
+
+        function promptKey(model) {
+          return 'cp-llm-download-prompted:' + String(model || '').toLowerCase();
+        }
+
+        function setBadge(currentState) {
+          if (!badgeEl) return;
+          var selected = String((currentState && currentState.selected_model) || configuredModel || 'LLM disabled').trim();
+          var installed = Boolean(currentState && currentState.selected_installed);
+          badgeEl.classList.remove('is-ready', 'is-missing');
+          if (!currentState || currentState.enabled === false) {
+            badgeEl.textContent = 'LLM disabled';
+            return;
+          }
+          if (installed) {
+            badgeEl.classList.add('is-ready');
+            badgeEl.textContent = '\u2713 ' + selected;
+          } else {
+            badgeEl.classList.add('is-missing');
+            badgeEl.textContent = '\u2717 ' + selected;
+          }
+        }
+
+        function renderOptions(currentState) {
+          if (!selectEl) return;
+          var rows = (currentState && currentState.model_options) || [];
+          var selected = String((currentState && currentState.selected_model) || configuredModel || '').trim();
+          selectEl.innerHTML = '';
+          rows.forEach(function (row) {
+            var option = document.createElement('option');
+            option.value = row.name || '';
+            var text = row.label || row.name || 'Model';
+            if (row.size) text += ' (' + row.size + ')';
+            if (row.available === 'true') text += ' - installed';
+            option.textContent = text;
+            if (String(row.name || '').toLowerCase() === selected.toLowerCase()) {
+              option.selected = true;
+            }
+            selectEl.appendChild(option);
+          });
+          if (selected && !selectEl.value) {
+            var fallback = document.createElement('option');
+            fallback.value = selected;
+            fallback.textContent = selected;
+            fallback.selected = true;
+            selectEl.appendChild(fallback);
+          }
+        }
+
+        function setBusy(isBusy) {
+          if (selectEl) selectEl.disabled = isBusy;
+        }
+
+        function fetchStatus() {
+          return fetch('/api/llm/model-status', { credentials: 'same-origin' })
+            .then(function (resp) {
+              return resp.json().then(function (data) {
+                if (!resp.ok) throw new Error((data && data.detail) || 'Could not load model status');
+                return data;
+              });
+            });
+        }
+
+        function refreshControls() {
+          return fetchStatus().then(function (payload) {
+            state = payload || {};
+            renderOptions(state);
+            setBadge(state);
+            return state;
+          });
+        }
+
+        function downloadModel(modelName) {
+          setBusy(true);
+          return fetch('/api/llm/download-model', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: modelName })
+          })
+            .then(function (resp) {
+              return resp.json().then(function (data) {
+                if (!resp.ok) throw new Error((data && data.detail) || 'Download failed');
+                return data;
+              });
+            })
+            .then(function (payload) {
+              var resolved = String((payload && payload.model) || modelName || '').trim();
+              if (resolved) {
+                localStorage.setItem(COOKIE_NAME, resolved);
+                setCookie(COOKIE_NAME, resolved);
+                localStorage.removeItem(promptKey(resolved));
+              }
+              return refreshControls().then(function () { return true; });
+            })
+            .catch(function (err) {
+              window.alert('Download failed: ' + (err.message || 'Unknown error'));
+              return false;
+            })
+            .finally(function () {
+              setBusy(false);
+            });
+        }
+
+        function maybePromptForDownload(currentState, forcePrompt) {
+          if (!currentState || !currentState.needs_download_prompt || !currentState.selected_model) {
+            return Promise.resolve(Boolean(currentState && currentState.selected_installed));
+          }
+
+          var selected = String(currentState.selected_model || '').trim();
+          if (!forcePrompt && localStorage.getItem(promptKey(selected)) === 'dismissed') {
+            return Promise.resolve(false);
+          }
+
+          var confirmed = window.confirm((currentState.message || ('Model ' + selected + ' is not installed.')) + '\n\nDownload it now?');
+          if (!confirmed) {
+            localStorage.setItem(promptKey(selected), 'dismissed');
+            return Promise.resolve(false);
+          }
+          localStorage.removeItem(promptKey(selected));
+          return downloadModel(selected);
+        }
+
+        window.cpEnsureSelectedModelReady = function () {
+          if (!state) {
+            return refreshControls().then(function (currentState) {
+              if (currentState.selected_installed) return true;
+              return maybePromptForDownload(currentState, true);
+            });
+          }
+          if (state.selected_installed) {
+            return Promise.resolve(true);
+          }
+          return maybePromptForDownload(state, true);
+        };
+
+        window.cpRefreshLlmControls = refreshControls;
+
+        if (selectEl) {
+          selectEl.addEventListener('change', function () {
+            var selected = String(selectEl.value || '').trim();
+            if (!selected) return;
+            localStorage.setItem(COOKIE_NAME, selected);
+            setCookie(COOKIE_NAME, selected);
+            localStorage.removeItem(promptKey(selected));
+            refreshControls().then(function (currentState) {
+              if (!currentState.selected_installed) {
+                return maybePromptForDownload(currentState, true);
+              }
+              return true;
+            });
+          });
+        }
+
+        var savedSelection = String(localStorage.getItem(COOKIE_NAME) || getCookie(COOKIE_NAME) || configuredModel || '').trim();
+        if (savedSelection) {
+          localStorage.setItem(COOKIE_NAME, savedSelection);
+          setCookie(COOKIE_NAME, savedSelection);
+        }
+
+        refreshControls().then(function (currentState) {
+          if (!currentState.selected_installed) {
+            return maybePromptForDownload(currentState, false);
+          }
+          return true;
+        });
+      })();
+    </script>
   </body>
 </html>

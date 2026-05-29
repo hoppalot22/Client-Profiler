@@ -1,0 +1,10 @@
+Turbine Outage Stabilization Financial Document
+
+Client Name: NorthRiver Energy
+Project: Turbine Outage Stabilization
+Project Code: NRE-TUR-OUT-2026
+Date: 2026-04-12
+Invoice Number: INV-NRE-260412
+Invoice Total: USD 182000.00
+Cost: USD 117500.00
+Notes: Includes emergency callout standby and overtime labor.

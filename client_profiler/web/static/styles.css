@@ -93,13 +93,39 @@ body {
 .topbar-sub {
   color: var(--muted);
   font-size: 0.95rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .inline-link {
   color: var(--accent-2);
   text-decoration: none;
   font-weight: 700;
+}
+
+.llm-control-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-left: 10px;
+}
+
+.llm-select-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.llm-model-selector {
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
 }
 
 .theme-toggle {
@@ -119,7 +145,6 @@ body {
 }
 
 .llm-badge {
-  margin-left: 10px;
   display: inline-flex;
   align-items: center;
   border: 1px solid #b9d6dc;
@@ -131,10 +156,16 @@ body {
   font-weight: 700;
 }
 
-.llm-badge.is-fallback {
-  border-color: #e9c27a;
-  background: #fff6e6;
-  color: #8a5a06;
+.llm-badge.is-ready {
+  border-color: #8ccf9f;
+  background: #edf9f0;
+  color: #1c6b34;
+}
+
+.llm-badge.is-missing {
+  border-color: #e5a2a2;
+  background: #fff1f1;
+  color: #9a1f1f;
 }
 
 .page {
@@ -153,8 +184,71 @@ body {
   box-shadow: var(--shadow);
 }
 
+.llm-download-prompt {
+  border-left: 4px solid var(--accent-2);
+}
+
+.llm-download-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.llm-download-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.llm-download-controls label {
+  font-weight: 700;
+}
+
+.llm-download-controls select {
+  min-width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.llm-download-dismiss {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.llm-download-dismiss:hover {
+  color: var(--ink);
+  border-color: var(--accent-2);
+}
+
 :root[data-theme="dark"] .topbar {
   background: rgba(44, 47, 54, 0.86);
+}
+
+:root[data-theme="dark"] .llm-model-selector {
+  background: #111925;
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .llm-badge.is-ready {
+  border-color: #3f7f56;
+  background: rgba(63, 127, 86, 0.25);
+  color: #cfe9d4;
+}
+
+:root[data-theme="dark"] .llm-badge.is-missing {
+  border-color: #8b4f4f;
+  background: rgba(139, 79, 79, 0.24);
+  color: #ffd0d0;
 }
 
 :root[data-theme="dark"] .client-card,

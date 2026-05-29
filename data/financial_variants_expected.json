@@ -1,0 +1,22 @@
+{
+  "NorthRiver Energy": {
+    "revenue": 182000.0,
+    "cost": 135400.0,
+    "profit": 46600.0
+  },
+  "BlueMesa Utilities": {
+    "revenue": 109000.0,
+    "cost": 82700.0,
+    "profit": 26300.0
+  },
+  "HarborStone Manufacturing": {
+    "revenue": 121300.0,
+    "cost": 141670.0,
+    "profit": -20370.0
+  },
+  "Delta Utilities": {
+    "revenue": 58900.0,
+    "cost": 73050.0,
+    "profit": -14150.0
+  }
+}

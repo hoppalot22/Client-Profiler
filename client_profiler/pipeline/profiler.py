@@ -10,7 +10,7 @@ from client_profiler.classification import DocumentClassifier
 from client_profiler.config import ProfilerConfig
 from client_profiler.embeddings import LocalEmbedder, VectorRetriever
 from client_profiler.extraction import OllamaClient, ProfileExtractor
-from client_profiler.ingestion import DocumentReader
+from client_profiler.ingestion import DocumentReader, UnsupportedFileTypeError
 from client_profiler.profiling import ProfileBuilder
 from client_profiler.projects import ProjectAssociator, ProjectSummaryService
 from client_profiler.storage import SqliteStorage
@@ -128,7 +128,7 @@ class ClientProfiler:
                 "content_hash": content_hash,
             }
 
-        classification = self.classifier.classify(doc.text)
+        classification = self.classifier.classify(doc.text, source_path=str(path))
         _emit_status(
             status_callback,
             event="classification_completed",
@@ -149,14 +149,20 @@ class ClientProfiler:
 
         explicit_client_name = self._guess_client_name(path, doc.text)
         inferred_by_references = False
+        inferred_by_path = False
         if extracted.client_name is None:
             if explicit_client_name and classification.is_client_related:
                 extracted.client_name = explicit_client_name
             else:
-                inferred_client = self._infer_client_from_references(extracted)
+                inferred_client = self._infer_client_from_path(path)
                 if inferred_client:
-                    inferred_by_references = True
+                    inferred_by_path = True
                     extracted.client_name = inferred_client
+                else:
+                    inferred_client = self._infer_client_from_references(extracted)
+                    if inferred_client:
+                        inferred_by_references = True
+                        extracted.client_name = inferred_client
 
         if extracted.client_name and not self._is_confident_client_name(
             extracted.client_name,
@@ -165,8 +171,12 @@ class ClientProfiler:
             classification.confidence,
             explicit_client_name=explicit_client_name,
             inferred_by_references=inferred_by_references,
+            inferred_by_path=inferred_by_path,
         ):
             extracted.client_name = None
+
+        if extracted.client_name:
+            extracted.client_name = self.storage.canonicalize_client_name(extracted.client_name)
 
         project_details = self.project_associator.resolve_project(
             str(doc.source_path),
@@ -184,6 +194,12 @@ class ClientProfiler:
         extracted.additional_fields.update(project_details)
 
         report_date = extracted.additional_fields.get("report_date")
+        if not report_date:
+            report_date = self._infer_report_date(path, extracted, classification.document_kind)
+            if report_date:
+                extracted.additional_fields["report_date"] = report_date
+
+        financial_metrics = self._extract_financial_metrics(doc.text, classification.document_kind)
         self.storage.save_document_record(
             source_path=str(doc.source_path),
             source_type=doc.source_type,
@@ -205,6 +221,12 @@ class ClientProfiler:
                 "purchase_order_number": extracted.additional_fields.get("purchase_order_number"),
                 "access_reference": extracted.additional_fields.get("access_reference"),
                 "related_references": extracted.additional_fields.get("related_references", []),
+                "financial_type": financial_metrics.get("financial_type"),
+                "currency": financial_metrics.get("currency"),
+                "revenue_amount": financial_metrics.get("revenue_amount"),
+                "cost_amount": financial_metrics.get("cost_amount"),
+                "gross_profit": financial_metrics.get("gross_profit"),
+                "gross_margin_pct": financial_metrics.get("gross_margin_pct"),
             },
         )
         _emit_status(status_callback, event="document_record_saved", path=str(path))
@@ -221,6 +243,11 @@ class ClientProfiler:
             "contacts": extracted.insight.contacts,
             "key_findings": extracted.insight.key_findings,
             "recommendations": extracted.insight.recommendations,
+            "financial_type": financial_metrics.get("financial_type"),
+            "currency": financial_metrics.get("currency"),
+            "revenue_amount": financial_metrics.get("revenue_amount"),
+            "cost_amount": financial_metrics.get("cost_amount"),
+            "gross_profit": financial_metrics.get("gross_profit"),
         }
         self.storage.add_report_version(
             source_path=str(doc.source_path),
@@ -418,6 +445,20 @@ class ClientProfiler:
                         run_reconciliation=False,
                     )
                 )
+            except UnsupportedFileTypeError as exc:
+                _emit_status(
+                    status_callback,
+                    event="file_unsupported",
+                    path=str(file_path),
+                    error=str(exc),
+                )
+                results.append(
+                    {
+                        "path": str(file_path),
+                        "status": "skipped_unsupported",
+                        "reason": str(exc),
+                    }
+                )
             except Exception as exc:
                 _emit_status(
                     status_callback,
@@ -500,12 +541,29 @@ class ClientProfiler:
             if candidate and not self._looks_like_document_name(candidate, path):
                 return candidate
 
-        for line in text.splitlines()[:40]:
+        pipe_pattern = re.compile(r"(?im)^\s*(?:client\s*name|client)\s*\|\s*(.+)$")
+        pipe_match = pipe_pattern.search(text[:8000])
+        if pipe_match:
+            candidate = self._clean_candidate_name(pipe_match.group(1))
+            if candidate and not self._looks_like_document_name(candidate, path):
+                return candidate
+
+        lines = text.splitlines()
+        for line in lines[:60]:
             lower = line.lower()
-            if "client" in lower and ":" in line:
-                candidate = self._clean_candidate_name(line.split(":", 1)[1])
+            if "client" in lower and (":" in line or "|" in line):
+                separator = ":" if ":" in line else "|"
+                candidate = self._clean_candidate_name(line.split(separator, 1)[1])
                 if candidate and not self._looks_like_document_name(candidate, path):
                     return candidate
+
+        for idx, line in enumerate(lines[:60]):
+            label = line.strip().lower().replace("*", "")
+            if label in {"client", "client name"}:
+                for next_line in lines[idx + 1 : idx + 5]:
+                    candidate = self._clean_candidate_name(next_line)
+                    if candidate and not self._looks_like_document_name(candidate, path):
+                        return candidate
         return None
 
     def _infer_client_from_references(self, extracted) -> str | None:
@@ -533,6 +591,7 @@ class ClientProfiler:
         classifier_confidence: float,
         explicit_client_name: str | None,
         inferred_by_references: bool,
+        inferred_by_path: bool,
     ) -> bool:
         name = str(candidate or "").strip()
         if len(name) < 3 or not any(ch.isalpha() for ch in name):
@@ -545,6 +604,8 @@ class ClientProfiler:
         if explicit_client_name and name.lower() == explicit_client_name.lower():
             return True
         if inferred_by_references:
+            return True
+        if inferred_by_path and classifier_confidence >= 0.6:
             return True
         if name.lower() in existing_clients:
             return True
@@ -575,6 +636,245 @@ class ClientProfiler:
         text = text.replace("**", "").replace("__", "")
         text = re.sub(r"\s+", " ", text).strip(" :;,.\t")
         return text
+
+    def _infer_client_from_path(self, path: Path) -> str | None:
+        ancestry = [path.stem, path.parent.name]
+        if path.parent.parent is not None:
+            ancestry.append(path.parent.parent.name)
+        combined_key = self._name_key(" ".join(ancestry))
+        if not combined_key:
+            return None
+
+        known_matches: list[str] = []
+        for client in self.storage.list_clients():
+            key = self._name_key(client)
+            if key and key in combined_key:
+                known_matches.append(client)
+        if len(known_matches) == 1:
+            return known_matches[0]
+
+        project_tokens = {
+            "piping",
+            "electrical",
+            "mechanical",
+            "civil",
+            "structural",
+            "condition",
+            "survey",
+            "integrity",
+            "assessment",
+            "reliability",
+            "audit",
+            "overhaul",
+            "review",
+        }
+
+        for ancestor in [path.parent, path.parent.parent]:
+            if ancestor is None:
+                continue
+            name = ancestor.name.lower()
+            if not name.startswith("report_"):
+                continue
+
+            tokens = [token for token in name.split("_") if token]
+            year_idx = -1
+            for idx, token in enumerate(tokens):
+                if token.isdigit() and len(token) == 4:
+                    year_idx = idx
+                    break
+            if year_idx < 0:
+                continue
+
+            client_tokens: list[str] = []
+            for token in tokens[year_idx + 1 :]:
+                if token in project_tokens:
+                    break
+                if token in {"report", "v2"}:
+                    continue
+                client_tokens.append(token)
+
+            if not client_tokens:
+                continue
+
+            candidate = self._clean_candidate_name(" ".join(client_tokens).title())
+            if candidate:
+                return candidate
+
+        return None
+
+    def _infer_report_date(self, path: Path, extracted: Any, document_kind: str) -> str | None:
+        for event in getattr(extracted, "events", []) or []:
+            raw = str(getattr(event, "date", "") or "").strip()
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+                return raw
+
+        joined = f"{path.stem} {path.parent.name}"
+        match = re.search(r"(\d{4}-\d{2}-\d{2})", joined)
+        if match is not None:
+            return match.group(1)
+
+        if document_kind == "report":
+            year_match = re.search(r"(?:^|[_\- ])(20\d{2}|19\d{2})(?:[_\- ]|$)", joined)
+            if year_match is not None:
+                return f"{year_match.group(1)}-01-01"
+        return None
+
+    def _extract_financial_metrics(self, text: str, document_kind: str) -> dict[str, Any]:
+        normalized_text = "\n".join(
+            line.strip().lstrip("-* ").replace("**", "")
+            for line in str(text or "").splitlines()
+        )
+        lower = normalized_text.lower()
+        currency = self._extract_currency(text)
+
+        revenue_labels = [
+            "invoice total",
+            "total invoice amount",
+            "billable amount",
+            "contract value",
+            "quote total",
+            "total amount due",
+            "revenue",
+        ]
+        cost_labels_preferred = ["total cost", "estimated cost", "actual cost"]
+        cost_labels_secondary = [
+            "supplier cost",
+            "labour cost",
+            "labor cost",
+            "material cost",
+            "travel cost",
+            "expense",
+            "expenses",
+            "cost",
+        ]
+
+        revenue = self._match_labeled_amount(
+            normalized_text,
+            [
+                r"(?im)^\s*(?:invoice\s+total|total\s+invoice\s+amount|billable\s+amount|revenue|contract\s+value|quote\s+total|total\s+amount\s+due)\s*(?::|\|)\s*([^\n]+)$",
+            ],
+        )
+        if revenue is None:
+            revenue = self._amount_after_labels(normalized_text, revenue_labels)
+
+        cost = self._match_labeled_amount(
+            normalized_text,
+            [
+                r"(?im)^\s*(?:total\s+cost|estimated\s+cost|actual\s+cost)\s*(?::|\|)\s*([^\n]+)$",
+            ],
+        )
+        if cost is None:
+            cost = self._amount_after_labels(normalized_text, cost_labels_preferred)
+        if cost is None:
+            cost = self._match_labeled_amount(
+                normalized_text,
+                [
+                    r"(?im)^\s*(?:supplier\s+cost|labou?r\s+cost|material\s+cost|travel\s+cost|expense|expenses|cost)\s*(?::|\|)\s*([^\n]+)$",
+                ],
+            )
+        if cost is None:
+            cost = self._amount_after_labels(normalized_text, cost_labels_secondary)
+
+        if revenue is None and document_kind in {"quote", "invoice"}:
+            revenue = self._first_money_amount(normalized_text)
+        if cost is None and document_kind in {"purchase_order", "access_request", "timesheet", "expense_report"}:
+            cost = self._first_money_amount(normalized_text)
+
+        financial_type = ""
+        if revenue is not None and cost is not None:
+            financial_type = "mixed"
+        elif revenue is not None:
+            financial_type = "revenue"
+        elif cost is not None:
+            financial_type = "cost"
+
+        gross_profit = None
+        gross_margin_pct = None
+        if revenue is not None and cost is not None:
+            gross_profit = round(revenue - cost, 2)
+            if revenue > 0:
+                gross_margin_pct = round((gross_profit / revenue) * 100.0, 2)
+
+        return {
+            "financial_type": financial_type,
+            "currency": currency,
+            "revenue_amount": round(revenue, 2) if revenue is not None else None,
+            "cost_amount": round(cost, 2) if cost is not None else None,
+            "gross_profit": gross_profit,
+            "gross_margin_pct": gross_margin_pct,
+        }
+
+    def _extract_currency(self, text: str) -> str:
+        if re.search(r"\bUSD\b|\$", text, re.IGNORECASE):
+            return "USD"
+        if re.search(r"\bAUD\b|A\$", text, re.IGNORECASE):
+            return "AUD"
+        if re.search(r"\bEUR\b|€", text, re.IGNORECASE):
+            return "EUR"
+        if re.search(r"\bGBP\b|£", text, re.IGNORECASE):
+            return "GBP"
+        return ""
+
+    def _match_labeled_amount(self, text: str, patterns: list[str]) -> float | None:
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                parsed = self._parse_money(match.group(1))
+                if parsed is not None:
+                    return parsed
+        return None
+
+    def _amount_after_labels(self, text: str, labels: list[str]) -> float | None:
+        normalized_labels = {label.strip().lower() for label in labels}
+        lines = [line.strip().replace("**", "") for line in text.splitlines() if line.strip()]
+
+        for idx, line in enumerate(lines):
+            lowered = line.lower().strip()
+
+            for label in normalized_labels:
+                if lowered == label:
+                    for next_line in lines[idx + 1 : idx + 3]:
+                        parsed = self._parse_money(next_line)
+                        if parsed is not None:
+                            return parsed
+
+                if lowered.startswith(label + ":") or lowered.startswith(label + "|"):
+                    part = line.split(":" if ":" in line else "|", 1)[1]
+                    parsed = self._parse_money(part)
+                    if parsed is not None:
+                        return parsed
+
+                if lowered.startswith(label + " "):
+                    parsed = self._parse_money(line[len(label) :])
+                    if parsed is not None:
+                        return parsed
+        return None
+
+    def _first_money_amount(self, text: str) -> float | None:
+        match = re.search(r"(?:USD|AUD|EUR|GBP|A\$|\$|€|£)\s*(\d+(?:,\d{3})*(?:\.\d{1,2})?)", text, re.IGNORECASE)
+        if match is not None:
+            return self._parse_money(match.group(1))
+
+        match = re.search(r"(?<![A-Za-z0-9\-])((?:\d{1,3}(?:,\d{3})+|\d{4,})(?:\.\d{1,2})?)(?![A-Za-z0-9\-])", text)
+        if match is not None:
+            return self._parse_money(match.group(1))
+        return None
+
+    def _parse_money(self, raw: str | None) -> float | None:
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        if not text:
+            return None
+        token_match = re.search(r"(\d+(?:,\d{3})*(?:\.\d{1,2})?)", text)
+        if token_match is None:
+            return None
+        cleaned = token_match.group(1).replace(",", "")
+        if not cleaned or cleaned in {"-", ".", "-."}:
+            return None
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
 
 def _chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")

@@ -1,0 +1,32 @@
+{"ts": "2026-05-29T05:15:50.349286", "event": "file_started", "path": "sample_docs\\invoice.txt", "force_reingest": true}
+{"ts": "2026-05-29T05:15:50.350271", "event": "file_read", "path": "sample_docs\\invoice.txt", "source_type": "text", "text_chars": 120}
+{"ts": "2026-05-29T05:15:50.352273", "event": "classification_completed", "path": "sample_docs\\invoice.txt", "document_kind": "invoice", "is_client_related": true, "confidence": 0.7}
+{"ts": "2026-05-29T05:15:50.357278", "event": "extraction_completed", "path": "sample_docs\\invoice.txt", "events_extracted": 1, "key_findings": 0, "recommendations": 0}
+{"ts": "2026-05-29T05:15:50.366474", "event": "project_resolution_completed", "path": "sample_docs\\invoice.txt", "project_key": "ar-inv-2026", "project_name": "Invoice"}
+{"ts": "2026-05-29T05:15:50.379161", "event": "document_record_saved", "path": "sample_docs\\invoice.txt"}
+{"ts": "2026-05-29T05:15:50.383158", "event": "report_version_saved", "path": "sample_docs\\invoice.txt"}
+{"ts": "2026-05-29T05:15:50.410662", "event": "profile_updated", "path": "sample_docs\\invoice.txt", "client_name": "Acme Refining", "project_key": "ar-inv-2026", "project_name": "Invoice"}
+{"ts": "2026-05-29T05:15:50.410662", "event": "chunk_embedding_started", "path": "sample_docs\\invoice.txt", "total_chunks": 1}
+{"ts": "2026-05-29T05:15:50.658930", "event": "chunk_embedded", "path": "sample_docs\\invoice.txt", "chunk_index": 1, "total_chunks": 1}
+{"ts": "2026-05-29T05:15:50.659926", "event": "chunk_embedding_completed", "path": "sample_docs\\invoice.txt", "total_chunks": 1}
+{"ts": "2026-05-29T05:15:50.659926", "event": "project_reconciliation_started", "path": "sample_docs\\invoice.txt", "client_name": "Acme Refining"}
+{"ts": "2026-05-29T05:15:50.663930", "event": "project_reconciliation_completed", "path": "sample_docs\\invoice.txt", "client_name": "Acme Refining"}
+{"ts": "2026-05-29T05:15:50.664931", "event": "merge_cleanup_started", "path": "sample_docs\\invoice.txt", "min_confidence": 0.95}
+{"ts": "2026-05-29T05:15:50.671937", "event": "merge_cleanup_completed", "path": "sample_docs\\invoice.txt", "candidate_count": 0, "merged_count": 0}
+{"ts": "2026-05-29T05:15:50.671937", "event": "file_completed", "path": "sample_docs\\invoice.txt", "status": "reingested", "document_kind": "invoice", "client_name": "Acme Refining"}
+{"ts": "2026-05-29T05:16:25.547869+00:00", "event": "file_started", "path": "sample_docs\\invoice.txt", "force_reingest": true}
+{"ts": "2026-05-29T05:16:25.547869+00:00", "event": "file_read", "path": "sample_docs\\invoice.txt", "source_type": "text", "text_chars": 120}
+{"ts": "2026-05-29T05:16:25.551091+00:00", "event": "classification_completed", "path": "sample_docs\\invoice.txt", "document_kind": "invoice", "is_client_related": true, "confidence": 0.7}
+{"ts": "2026-05-29T05:16:25.555095+00:00", "event": "extraction_completed", "path": "sample_docs\\invoice.txt", "events_extracted": 1, "key_findings": 0, "recommendations": 0}
+{"ts": "2026-05-29T05:16:25.565519+00:00", "event": "project_resolution_completed", "path": "sample_docs\\invoice.txt", "project_key": "ar-inv-2026", "project_name": "Invoice"}
+{"ts": "2026-05-29T05:16:25.579058+00:00", "event": "document_record_saved", "path": "sample_docs\\invoice.txt"}
+{"ts": "2026-05-29T05:16:25.582971+00:00", "event": "report_version_saved", "path": "sample_docs\\invoice.txt"}
+{"ts": "2026-05-29T05:16:25.611864+00:00", "event": "profile_updated", "path": "sample_docs\\invoice.txt", "client_name": "Acme Refining", "project_key": "ar-inv-2026", "project_name": "Invoice"}
+{"ts": "2026-05-29T05:16:25.611864+00:00", "event": "chunk_embedding_started", "path": "sample_docs\\invoice.txt", "total_chunks": 1}
+{"ts": "2026-05-29T05:16:25.899063+00:00", "event": "chunk_embedded", "path": "sample_docs\\invoice.txt", "chunk_index": 1, "total_chunks": 1}
+{"ts": "2026-05-29T05:16:25.899063+00:00", "event": "chunk_embedding_completed", "path": "sample_docs\\invoice.txt", "total_chunks": 1}
+{"ts": "2026-05-29T05:16:25.900057+00:00", "event": "project_reconciliation_started", "path": "sample_docs\\invoice.txt", "client_name": "Acme Refining"}
+{"ts": "2026-05-29T05:16:25.903059+00:00", "event": "project_reconciliation_completed", "path": "sample_docs\\invoice.txt", "client_name": "Acme Refining"}
+{"ts": "2026-05-29T05:16:25.904060+00:00", "event": "merge_cleanup_started", "path": "sample_docs\\invoice.txt", "min_confidence": 0.95}
+{"ts": "2026-05-29T05:16:25.909970+00:00", "event": "merge_cleanup_completed", "path": "sample_docs\\invoice.txt", "candidate_count": 0, "merged_count": 0}
+{"ts": "2026-05-29T05:16:25.910966+00:00", "event": "file_completed", "path": "sample_docs\\invoice.txt", "status": "reingested", "document_kind": "invoice", "client_name": "Acme Refining"}

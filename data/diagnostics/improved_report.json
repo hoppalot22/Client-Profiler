@@ -1,0 +1,234 @@
+{
+  "generated_at": "2026-05-29T05:22:42.653462+00:00",
+  "event_log": "data\\diagnostics\\improved_events.jsonl",
+  "event_summary": {
+    "event_counts": {
+      "directory_scanned": 1,
+      "file_started": 134,
+      "file_read": 124,
+      "classification_completed": 124,
+      "extraction_completed": 124,
+      "project_resolution_completed": 124,
+      "document_record_saved": 124,
+      "report_version_saved": 124,
+      "profile_updated": 123,
+      "chunk_embedding_started": 124,
+      "chunk_embedded": 255,
+      "chunk_embedding_completed": 124,
+      "file_completed": 124,
+      "file_unsupported": 10,
+      "project_reconciliation_started": 5,
+      "project_reconciliation_completed": 5,
+      "merge_cleanup_started": 1,
+      "merge_cleanup_completed": 1,
+      "directory_completed": 1
+    },
+    "file_status_counts": {
+      "reingested": 124
+    },
+    "file_duration_seconds": {
+      "count": 124,
+      "avg": 0.228,
+      "p50": 0.194,
+      "p95": 0.458,
+      "slowest": [
+        {
+          "path": "sample_docs\\report_v2_01_2016_northriver_energy_piping_integrity_assessment.pdf",
+          "seconds": 0.615
+        },
+        {
+          "path": "sample_docs\\report_01_2016_northriver_energy_piping_integrity_assessment.pdf",
+          "seconds": 0.555
+        },
+        {
+          "path": "sample_docs\\report_v2_07_2022_northriver_energy_mechanical_overhaul_review.pdf",
+          "seconds": 0.514
+        },
+        {
+          "path": "sample_docs\\dedup_test.md",
+          "seconds": 0.491
+        },
+        {
+          "path": "sample_docs\\report_v2_04_2019_northriver_energy_civil_structural_condition_survey.pdf",
+          "seconds": 0.477
+        },
+        {
+          "path": "sample_docs\\project_logistics\\report_v2_03_2018_harborstone_manufacturing_mechanical_overhaul_review\\email_chain_hm_mec_ove_rev_2018.txt",
+          "seconds": 0.467
+        },
+        {
+          "path": "sample_docs\\report_v2_10_2025_northriver_energy_electrical_reliability_audit.pdf",
+          "seconds": 0.458
+        },
+        {
+          "path": "sample_docs\\project_logistics\\report_06_2021_harborstone_manufacturing_electrical_reliability_audit\\email_chain_hm_ele_rel_aud_2021.txt",
+          "seconds": 0.421
+        },
+        {
+          "path": "sample_docs\\project_logistics\\report_03_2018_harborstone_manufacturing_mechanical_overhaul_review\\email_chain_hm_mec_ove_rev_2018.txt",
+          "seconds": 0.418
+        },
+        {
+          "path": "sample_docs\\project_logistics\\report_v2_08_2023_bluemesa_utilities_civil_structural_condition_survey\\purchase_order_po_2023_082.csv",
+          "seconds": 0.416
+        }
+      ]
+    },
+    "errors": [],
+    "unsupported_files": [
+      {
+        "path": "sample_docs\\charts\\report_v2_01_2016_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.201303+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_02_2017_bluemesa_utilities_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.202306+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_03_2018_harborstone_manufacturing_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.203305+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_04_2019_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.204306+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_05_2020_bluemesa_utilities_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.205308+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_06_2021_harborstone_manufacturing_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.205308+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_07_2022_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.206308+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_08_2023_bluemesa_utilities_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.207309+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_09_2024_harborstone_manufacturing_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.207984+00:00"
+      },
+      {
+        "path": "sample_docs\\charts\\report_v2_10_2025_northriver_energy_trend.png",
+        "reason": "Unsupported file type: .png",
+        "ts": "2026-05-29T05:22:21.208980+00:00"
+      }
+    ]
+  },
+  "db_quality": {
+    "db_found": true,
+    "db_path": "data\\profiler_improved.db",
+    "counts": {
+      "documents": 124,
+      "profiles": 142,
+      "timeline": 183,
+      "vectors": 255,
+      "null_client_docs": 1,
+      "report_docs_missing_date": 10
+    },
+    "document_kind_counts": {
+      "quote": 40,
+      "purchase_order": 40,
+      "report": 22,
+      "access_request": 20,
+      "unknown": 1,
+      "invoice": 1
+    },
+    "filename_kind_mismatches": [
+      {
+        "path": "sample_docs\\project_logistics\\report_01_2016_northriver_energy_piping_integrity_assessment\\email_chain_ne_pip_int_ass_2016.md",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_02_2017_bluemesa_utilities_electrical_reliability_audit\\email_chain_bu_ele_rel_aud_2017.html",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_03_2018_harborstone_manufacturing_mechanical_overhaul_review\\email_chain_hm_mec_ove_rev_2018.txt",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_04_2019_northriver_energy_civil_structural_condition_survey\\email_chain_ne_civ_str_con_2019.md",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_05_2020_bluemesa_utilities_piping_integrity_assessment\\email_chain_bu_pip_int_ass_2020.html",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_06_2021_harborstone_manufacturing_electrical_reliability_audit\\email_chain_hm_ele_rel_aud_2021.txt",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_07_2022_northriver_energy_mechanical_overhaul_review\\email_chain_ne_mec_ove_rev_2022.md",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_08_2023_bluemesa_utilities_civil_structural_condition_survey\\email_chain_bu_civ_str_con_2023.html",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_09_2024_harborstone_manufacturing_piping_integrity_assessment\\email_chain_hm_pip_int_ass_2024.txt",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_10_2025_northriver_energy_electrical_reliability_audit\\email_chain_ne_ele_rel_aud_2025.md",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_01_2016_northriver_energy_piping_integrity_assessment\\email_chain_ne_pip_int_ass_2016.md",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_02_2017_bluemesa_utilities_electrical_reliability_audit\\email_chain_bu_ele_rel_aud_2017.html",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_03_2018_harborstone_manufacturing_mechanical_overhaul_review\\email_chain_hm_mec_ove_rev_2018.txt",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_04_2019_northriver_energy_civil_structural_condition_survey\\email_chain_ne_civ_str_con_2019.md",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_05_2020_bluemesa_utilities_piping_integrity_assessment\\email_chain_bu_pip_int_ass_2020.html",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_06_2021_harborstone_manufacturing_electrical_reliability_audit\\email_chain_hm_ele_rel_aud_2021.txt",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_07_2022_northriver_energy_mechanical_overhaul_review\\email_chain_ne_mec_ove_rev_2022.md",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_08_2023_bluemesa_utilities_civil_structural_condition_survey\\email_chain_bu_civ_str_con_2023.html",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_09_2024_harborstone_manufacturing_piping_integrity_assessment\\email_chain_hm_pip_int_ass_2024.txt",
+        "document_kind": "purchase_order"
+      },
+      {
+        "path": "sample_docs\\project_logistics\\report_v2_10_2025_northriver_energy_electrical_reliability_audit\\email_chain_ne_ele_rel_aud_2025.md",
+        "document_kind": "purchase_order"
+      }
+    ],
+    "client_name_canonical_collisions": []
+  }
+}

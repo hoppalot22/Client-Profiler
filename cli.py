@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import sys
 from pathlib import Path
@@ -53,6 +54,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.95,
         help="Minimum confidence threshold for automatic client merge cleanup.",
     )
+    ingest_file.add_argument(
+        "--event-log",
+        type=Path,
+        default=None,
+        help="Optional JSONL path to append structured ingest status events.",
+    )
 
     ingest_dir = sub.add_parser("ingest-dir", help="Ingest a directory")
     ingest_dir.add_argument("path", type=Path)
@@ -92,6 +99,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.95,
         help="Minimum confidence threshold for automatic client merge cleanup.",
     )
+    ingest_dir.add_argument(
+        "--event-log",
+        type=Path,
+        default=None,
+        help="Optional JSONL path to append structured ingest status events.",
+    )
 
     query = sub.add_parser("query", help="Semantic search over embedded chunks")
     query.add_argument("text", type=str)
@@ -99,6 +112,9 @@ def _build_parser() -> argparse.ArgumentParser:
     query.add_argument("--top-k", type=int, default=5)
 
     clients = sub.add_parser("list-clients", help="List known clients")
+
+    client_metrics = sub.add_parser("client-metrics", help="Show operational and financial metrics for clients")
+    client_metrics.add_argument("--client", type=str, default=None, help="Optional specific client name")
 
     set_report_date = sub.add_parser("set-report-date", help="Set report date for a source document")
     set_report_date.add_argument("path", type=str)
@@ -169,6 +185,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ingest_dir,
         query,
         clients,
+        client_metrics,
         set_report_date,
         delete_client,
         delete_node,
@@ -206,10 +223,34 @@ def _build_profiler(args: argparse.Namespace) -> ClientProfiler:
 
 
 class _CliStatusReporter:
-    def __init__(self, enabled: bool = True) -> None:
+    def __init__(self, enabled: bool = True, event_log_path: Path | None = None) -> None:
         self.enabled = enabled
+        self.event_log_path = event_log_path
         self._files_bar: tqdm | None = None
         self._chunks_bar: tqdm | None = None
+
+    def _serialize_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        serialized: dict[str, Any] = {}
+        for key, value in event.items():
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                serialized[key] = value
+                continue
+            if isinstance(value, Path):
+                serialized[key] = str(value)
+                continue
+            serialized[key] = str(value)
+        return serialized
+
+    def _append_event_log(self, event: dict[str, Any]) -> None:
+        if self.event_log_path is None:
+            return
+        self.event_log_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            **self._serialize_event(event),
+        }
+        with self.event_log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
     def _write(self, message: str) -> None:
         if not self.enabled:
@@ -231,6 +272,7 @@ class _CliStatusReporter:
             self._files_bar = None
 
     def __call__(self, event: dict[str, Any]) -> None:
+        self._append_event_log(event)
         if not self.enabled:
             return
 
@@ -259,6 +301,12 @@ class _CliStatusReporter:
             if self._files_bar is not None:
                 self._files_bar.update(1)
             self._write(f"[status] skipped duplicate {file_name}")
+            return
+
+        if kind == "file_unsupported":
+            if self._files_bar is not None:
+                self._files_bar.update(1)
+            self._write(f"[status] skipped unsupported {file_name}: {event.get('error')}")
             return
 
         if kind == "chunk_embedding_started":
@@ -328,7 +376,10 @@ def main() -> None:
     args = parser.parse_args()
 
     profiler = _build_profiler(args)
-    status_reporter = _CliStatusReporter(enabled=bool(getattr(args, "status", False)))
+    status_reporter = _CliStatusReporter(
+        enabled=bool(getattr(args, "status", False)),
+        event_log_path=getattr(args, "event_log", None),
+    )
 
     if args.command == "ingest-file":
         try:
@@ -369,6 +420,18 @@ def main() -> None:
 
     if args.command == "list-clients":
         print(json.dumps(profiler.storage.list_clients(), indent=2))
+        return
+
+    if args.command == "client-metrics":
+        if args.client:
+            clients = [args.client]
+        else:
+            clients = profiler.storage.list_clients()
+        payload = {
+            client: profiler.storage.get_client_metrics(client)
+            for client in clients
+        }
+        print(json.dumps(payload, indent=2))
         return
 
     if args.command == "set-report-date":

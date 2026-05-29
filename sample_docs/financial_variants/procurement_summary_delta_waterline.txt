@@ -1,0 +1,11 @@
+Waterline Integrity Sprint Financial Document
+
+Client: Delta Utilities
+Project: Waterline Integrity Sprint
+Project Code: DEL-WAT-INT-2026
+Date: 2026-05-04
+Purchase Order Number: PO-DEL-0504
+Supplier Cost: USD 33980.00
+Expense: USD 4200.00
+Total Cost: USD 38180.00
+Comment: Direct reimbursable procurement package
